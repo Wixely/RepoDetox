@@ -14,25 +14,26 @@ public sealed class RepositoryAnalyzer(
         var repositoryRoot = await ResolveRepositoryRootAsync(workingPath, cancellationToken);
         var currentBranch = await GetCurrentBranchAsync(repositoryRoot, cancellationToken);
         var currentFiles = await GetCurrentFilesAsync(repositoryRoot, cancellationToken);
-        var historicalPaths = await GetHistoricalPathsAsync(repositoryRoot, cancellationToken);
-        var historicalOnlyPaths = historicalPaths
-            .Except(currentFiles, StringComparer.Ordinal)
-            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var historicalPathObjectIds = await GetHistoricalPathObjectIdsAsync(repositoryRoot, cancellationToken);
+        var historicalOnlyPathEntries = await BuildHistoricalOnlyPathEntriesAsync(
+            repositoryRoot,
+            currentFiles,
+            historicalPathObjectIds,
+            cancellationToken);
 
         logger.LogInformation(
             "Analyzed {RepositoryRoot}. Branch={CurrentBranch}, CurrentFiles={CurrentFiles}, HistoricalOnlyPaths={HistoricalOnlyPaths}.",
             repositoryRoot,
             currentBranch,
             currentFiles.Count,
-            historicalOnlyPaths.Length);
+            historicalOnlyPathEntries.Count);
 
         return new RepositoryScanResult(
             repositoryRoot,
             currentBranch,
             currentFiles.Count,
-            historicalPaths.Count,
-            historicalOnlyPaths);
+            historicalPathObjectIds.Count,
+            historicalOnlyPathEntries);
     }
 
     private async Task<string> ResolveRepositoryRootAsync(string workingPath, CancellationToken cancellationToken)
@@ -88,32 +89,136 @@ public sealed class RepositoryAnalyzer(
         return new HashSet<string>(values, StringComparer.Ordinal);
     }
 
-    private async Task<HashSet<string>> GetHistoricalPathsAsync(string repositoryRoot, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, HashSet<string>>> GetHistoricalPathObjectIdsAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
     {
         var result = await gitCommandRunner.RunCheckedAsync(
             repositoryRoot,
             ["rev-list", "--objects", "--all"],
             cancellationToken);
 
-        var historicalPaths = new HashSet<string>(StringComparer.Ordinal);
+        var historicalPathObjectIds = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
 
         using var reader = new StringReader(result.StandardOutput);
         string? line;
 
         while ((line = reader.ReadLine()) is not null)
         {
-            var separatorIndex = line.IndexOf(' ');
-
-            if (separatorIndex < 0 || separatorIndex == line.Length - 1)
+            var firstSeparatorIndex = line.IndexOf(' ');
+            if (firstSeparatorIndex < 0 || firstSeparatorIndex == line.Length - 1)
             {
                 continue;
             }
 
-            var path = line[(separatorIndex + 1)..];
-            historicalPaths.Add(path);
+            var objectId = line[..firstSeparatorIndex];
+            var path = line[(firstSeparatorIndex + 1)..];
+
+            if (!historicalPathObjectIds.TryGetValue(path, out var objectIds))
+            {
+                objectIds = new HashSet<string>(StringComparer.Ordinal);
+                historicalPathObjectIds[path] = objectIds;
+            }
+
+            objectIds.Add(objectId);
         }
 
-        return historicalPaths;
+        return historicalPathObjectIds;
+    }
+
+    private async Task<IReadOnlyList<HistoricalPathEntry>> BuildHistoricalOnlyPathEntriesAsync(
+        string repositoryRoot,
+        HashSet<string> currentFiles,
+        Dictionary<string, HashSet<string>> historicalPathObjectIds,
+        CancellationToken cancellationToken)
+    {
+        var historicalOnlyPathEntries = historicalPathObjectIds
+            .Where(entry => !currentFiles.Contains(entry.Key))
+            .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (historicalOnlyPathEntries.Length == 0)
+        {
+            return Array.Empty<HistoricalPathEntry>();
+        }
+
+        var objectSizes = await GetObjectSizesAsync(
+            repositoryRoot,
+            historicalOnlyPathEntries.SelectMany(entry => entry.Value).Distinct(StringComparer.Ordinal),
+            cancellationToken);
+
+        return historicalOnlyPathEntries
+            .Select(entry =>
+            {
+                long? maxSizeBytes = null;
+
+                foreach (var objectId in entry.Value)
+                {
+                    if (!objectSizes.TryGetValue(objectId, out var sizeBytes))
+                    {
+                        continue;
+                    }
+
+                    maxSizeBytes = maxSizeBytes is null
+                        ? sizeBytes
+                        : Math.Max(maxSizeBytes.Value, sizeBytes);
+                }
+
+                return new HistoricalPathEntry(entry.Key, maxSizeBytes);
+            })
+            .ToArray();
+    }
+
+    private async Task<Dictionary<string, long>> GetObjectSizesAsync(
+        string repositoryRoot,
+        IEnumerable<string> objectIds,
+        CancellationToken cancellationToken)
+    {
+        var objectIdList = objectIds.ToArray();
+        if (objectIdList.Length == 0)
+        {
+            return new Dictionary<string, long>(StringComparer.Ordinal);
+        }
+
+        var standardInput = string.Join(Environment.NewLine, objectIdList) + Environment.NewLine;
+        var result = await gitCommandRunner.RunCheckedAsync(
+            repositoryRoot,
+            ["cat-file", "--batch-check=%(objectname) %(objecttype) %(objectsize)"],
+            cancellationToken,
+            standardInput: standardInput);
+
+        var objectSizes = new Dictionary<string, long>(StringComparer.Ordinal);
+        using var reader = new StringReader(result.StandardOutput);
+        string? line;
+
+        while ((line = reader.ReadLine()) is not null)
+        {
+            var separatorIndex = line.IndexOf(' ');
+            if (separatorIndex < 0)
+            {
+                continue;
+            }
+
+            var secondSeparatorIndex = line.IndexOf(' ', separatorIndex + 1);
+            if (secondSeparatorIndex < 0 || secondSeparatorIndex == line.Length - 1)
+            {
+                continue;
+            }
+
+            var objectId = line[..separatorIndex];
+            var objectType = line[(separatorIndex + 1)..secondSeparatorIndex];
+            var objectSizeText = line[(secondSeparatorIndex + 1)..];
+
+            if (!string.Equals(objectType, "blob", StringComparison.Ordinal) ||
+                !long.TryParse(objectSizeText, out var objectSize))
+            {
+                continue;
+            }
+
+            objectSizes[objectId] = objectSize;
+        }
+
+        return objectSizes;
     }
 
     private static string ResolveWorkingPath(string repositoryPath) =>

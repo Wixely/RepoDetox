@@ -10,7 +10,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         string workingDirectory,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default,
-        IReadOnlyDictionary<string, string?>? environmentVariables = null)
+        IReadOnlyDictionary<string, string?>? environmentVariables = null,
+        string? standardInput = null)
     {
         logger.LogDebug("Executing git {Arguments} in {WorkingDirectory}.", FormatArguments(arguments), workingDirectory);
 
@@ -22,6 +23,7 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
+                RedirectStandardInput = standardInput is not null,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
@@ -49,6 +51,13 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             throw new InvalidOperationException("Git could not be started. Ensure git is installed and available on PATH.", ex);
         }
 
+        if (standardInput is not null)
+        {
+            await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
+            await process.StandardInput.FlushAsync();
+            process.StandardInput.Close();
+        }
+
         var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
 
@@ -64,9 +73,10 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         string workingDirectory,
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default,
-        IReadOnlyDictionary<string, string?>? environmentVariables = null)
+        IReadOnlyDictionary<string, string?>? environmentVariables = null,
+        string? standardInput = null)
     {
-        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables);
+        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables, standardInput);
 
         if (result.ExitCode == 0)
         {

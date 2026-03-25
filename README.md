@@ -11,9 +11,19 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 
 ## Prerequisites
 
-- .NET 8 SDK or newer
+- .NET 8 SDK or newer to build/publish
 - Git on `PATH`
 - `git filter-repo` on `PATH` for the `vacuum` command
+
+## Portable Build
+
+Publish a self-contained portable Windows build with:
+
+```powershell
+dotnet publish -c Release
+```
+
+The output will be in `bin\Release\net8.0\win-x64\publish\` and can be copied to another Windows x64 machine without installing .NET. `appsettings.json` is included in that publish output.
 
 ## Example
 
@@ -21,7 +31,13 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 dotnet run -- list --repo C:\path\to\repo
 ```
 
+```powershell
+dotnet run -- list C:\path\to\repo
+```
+
 Run `dotnet run` with no arguments to see the CLI help.
+
+You can pass the repository either as a positional argument like `list C:\path\to\repo` or with `--repo C:\path\to\repo`.
 
 To anonymize commit metadata during a rewrite, use `vacuum` with `--anonymize`, `--anonymize-users`, or `--anonymize-emails`. This rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
 

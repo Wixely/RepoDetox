@@ -68,9 +68,9 @@ public sealed class CliApplication(
             return 0;
         }
 
-        foreach (var path in result.HistoricalOnlyPaths)
+        foreach (var entry in result.HistoricalOnlyPathEntries)
         {
-            Console.WriteLine(path);
+            Console.WriteLine($"{entry.Path}{FormatHistoricalSize(entry.MaxSizeBytes)}");
         }
 
         return 0;
@@ -90,6 +90,17 @@ public sealed class CliApplication(
         return 0;
     }
 
+    private static string FormatHistoricalSize(long? sizeBytes)
+    {
+        if (sizeBytes is null)
+        {
+            return string.Empty;
+        }
+
+        var sizeInMegabytes = sizeBytes.Value / (1024d * 1024d);
+        return $" (max {sizeInMegabytes:F2} MB)";
+    }
+
     private static int HandleParseErrors(
         ParserResult<object> parserResult,
         IEnumerable<Error> errors)
@@ -104,6 +115,7 @@ public sealed class CliApplication(
                 current.Copyright = string.Empty;
                 current.AdditionalNewLineAfterOption = false;
                 current.MaximumDisplayWidth = 120;
+                current.AddPostOptionsLine("Run '<verb> --help' for command-specific options, including '--repo <path>'.");
                 return informational
                     ? current
                     : HelpText.DefaultParsingErrorsHandler(parserResult, current);
