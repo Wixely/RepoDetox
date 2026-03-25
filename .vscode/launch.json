@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "RepoDetox",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      }
+    },
+    {
+      "name": "RepoDetox Preview",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "args": [
+        "preview",
+        "--repo",
+        "${workspaceFolder}",
+        "--port",
+        "5078"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      },
+      "serverReadyAction": {
+        "action": "openExternally",
+        "pattern": "Now listening on:\\s+(http://\\S+)"
+      }
+    },
+    {
+      "name": "RepoDetox List",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "args": [
+        "list",
+        "--repo",
+        "${workspaceFolder}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

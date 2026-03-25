@@ -1,0 +1,54 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "build",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "build",
+        "${workspaceFolder}/RepoDetox.sln"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run:list",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/RepoDetox.csproj",
+        "--",
+        "list",
+        "--repo",
+        "${workspaceFolder}"
+      ],
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run:preview",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/RepoDetox.csproj",
+        "--",
+        "preview",
+        "--repo",
+        "${workspaceFolder}",
+        "--port",
+        "5078"
+      ],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    }
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "profiles": {
+    "RepoDetox": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      }
+    },
+    "RepoDetox List": {
+      "commandName": "Project",
+      "commandLineArgs": "list --repo .",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      }
+    },
+    "RepoDetox Vacuum": {
+      "commandName": "Project",
+      "commandLineArgs": "vacuum --repo .",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      }
+    },
+    "RepoDetox Preview": {
+      "commandName": "Project",
+      "commandLineArgs": "preview --repo . --port 5078",
+      "environmentVariables": {
+        "DOTNET_ENVIRONMENT": "Development",
+        "Serilog__MinimumLevel__Override__Microsoft.Hosting.Lifetime": "Information"
+      }
+    }
+  }
+}
