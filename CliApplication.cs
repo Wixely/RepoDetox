@@ -53,6 +53,10 @@ public sealed class CliApplication(
 
     private async Task<int> HandleListAsync(ListOptions options, CancellationToken cancellationToken)
     {
+        Console.WriteLine($"Scanning repository: {options.RepositoryPath}");
+        Console.WriteLine("This may take a while on large repositories with long history.");
+        Console.WriteLine();
+
         var result = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
 
         Console.WriteLine($"Repository: {result.RepositoryRoot}");
@@ -72,6 +76,9 @@ public sealed class CliApplication(
         {
             Console.WriteLine($"{entry.Path}{FormatHistoricalSize(entry.MaxSizeBytes)}");
         }
+
+        Console.WriteLine();
+        Console.WriteLine($"Estimated space saved after cleaning: {FormatAggregateSize(result.EstimatedSavingsBytes)}");
 
         return 0;
     }
@@ -99,6 +106,17 @@ public sealed class CliApplication(
 
         var sizeInMegabytes = sizeBytes.Value / (1024d * 1024d);
         return $" (max {sizeInMegabytes:F2} MB)";
+    }
+
+    private static string FormatAggregateSize(long? sizeBytes)
+    {
+        if (sizeBytes is null)
+        {
+            return "unknown";
+        }
+
+        var sizeInMegabytes = sizeBytes.Value / (1024d * 1024d);
+        return $"{sizeInMegabytes:F2} MB";
     }
 
     private static int HandleParseErrors(

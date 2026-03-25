@@ -51,17 +51,21 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             throw new InvalidOperationException("Git could not be started. Ensure git is installed and available on PATH.", ex);
         }
 
-        if (standardInput is not null)
-        {
-            await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
-            await process.StandardInput.FlushAsync();
-            process.StandardInput.Close();
-        }
-
         var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        Task? standardInputTask = null;
+
+        if (standardInput is not null)
+        {
+            standardInputTask = WriteStandardInputAsync(process, standardInput, cancellationToken);
+        }
 
         await process.WaitForExitAsync(cancellationToken);
+
+        if (standardInputTask is not null)
+        {
+            await standardInputTask;
+        }
 
         var standardOutput = await standardOutputTask;
         var standardError = await standardErrorTask;
@@ -96,4 +100,14 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
 
     private static string QuoteIfNeeded(string value) =>
         value.Contains(' ', StringComparison.Ordinal) ? $"\"{value}\"" : value;
+
+    private static async Task WriteStandardInputAsync(
+        Process process,
+        string standardInput,
+        CancellationToken cancellationToken)
+    {
+        await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
+        await process.StandardInput.FlushAsync();
+        process.StandardInput.Close();
+    }
 }

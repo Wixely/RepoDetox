@@ -6,7 +6,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/win-x64/RepoDetox.exe",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "stopAtEntry": false,
@@ -20,7 +20,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/win-x64/RepoDetox.exe",
       "args": [
         "preview",
         "--repo",
@@ -45,7 +45,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/bin/Debug/net8.0/win-x64/RepoDetox.exe",
       "args": [
         "list",
         "--repo",

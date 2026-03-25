@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Diagnostics;
 
 namespace RepoDetox;
 
@@ -10,11 +11,23 @@ public sealed class RepositoryAnalyzer(
         string repositoryPath,
         CancellationToken cancellationToken = default)
     {
+        var stopwatch = Stopwatch.StartNew();
         var workingPath = ResolveWorkingPath(repositoryPath);
+        logger.LogInformation("Starting repository analysis for {RepositoryPath}.", workingPath);
+
+        logger.LogInformation("Resolving repository root for {RepositoryPath}.", workingPath);
         var repositoryRoot = await ResolveRepositoryRootAsync(workingPath, cancellationToken);
+
+        logger.LogInformation("Reading current branch for {RepositoryRoot}.", repositoryRoot);
         var currentBranch = await GetCurrentBranchAsync(repositoryRoot, cancellationToken);
+
+        logger.LogInformation("Loading tracked files from the current branch for {RepositoryRoot}.", repositoryRoot);
         var currentFiles = await GetCurrentFilesAsync(repositoryRoot, cancellationToken);
+
+        logger.LogInformation("Scanning all historical objects for {RepositoryRoot}. This can take a while on large repositories.", repositoryRoot);
         var historicalPathObjectIds = await GetHistoricalPathObjectIdsAsync(repositoryRoot, cancellationToken);
+
+        logger.LogInformation("Resolving historical file sizes for {RepositoryRoot}.", repositoryRoot);
         var historicalOnlyPathEntries = await BuildHistoricalOnlyPathEntriesAsync(
             repositoryRoot,
             currentFiles,
@@ -27,6 +40,11 @@ public sealed class RepositoryAnalyzer(
             currentBranch,
             currentFiles.Count,
             historicalOnlyPathEntries.Count);
+
+        logger.LogInformation(
+            "Repository analysis for {RepositoryRoot} completed in {ElapsedSeconds:0.00}s.",
+            repositoryRoot,
+            stopwatch.Elapsed.TotalSeconds);
 
         return new RepositoryScanResult(
             repositoryRoot,
