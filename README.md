@@ -5,6 +5,7 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 ## Current Commands
 
 - `list`: shows files that appear in repository history but no longer exist on the current branch.
+- `flatten`: rewrites the repository to a single root commit that matches the current HEAD state, removing all other refs and history.
 - `vacuum`: rewrites history to remove the same file set after confirmation, can anonymize commit/tag usernames and emails, then expires reflogs and runs garbage collection.
 - `preview`: starts a local browser view for the current analysis to support editor debugging. This is opt-in and requires `Preview:Enabled` to be set to `true` in `appsettings.json`.
 
@@ -23,3 +24,5 @@ dotnet run -- list --repo C:\path\to\repo
 Run `dotnet run` with no arguments to see the CLI help.
 
 To anonymize commit metadata during a rewrite, use `vacuum` with `--anonymize`, `--anonymize-users`, or `--anonymize-emails`. This rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
+
+To delete all history and keep only the current repository state, use `flatten`. This creates a single new root commit and removes all other refs, so prior hashes and tags stop being valid.

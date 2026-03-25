@@ -9,7 +9,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
     public async Task<GitCommandResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string?>? environmentVariables = null)
     {
         logger.LogDebug("Executing git {Arguments} in {WorkingDirectory}.", FormatArguments(arguments), workingDirectory);
 
@@ -25,6 +26,14 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
                 CreateNoWindow = true
             }
         };
+
+        if (environmentVariables is not null)
+        {
+            foreach (var environmentVariable in environmentVariables)
+            {
+                process.StartInfo.Environment[environmentVariable.Key] = environmentVariable.Value ?? string.Empty;
+            }
+        }
 
         foreach (var argument in arguments)
         {
@@ -54,9 +63,10 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
     public async Task<GitCommandResult> RunCheckedAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string?>? environmentVariables = null)
     {
-        var result = await RunAsync(workingDirectory, arguments, cancellationToken);
+        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables);
 
         if (result.ExitCode == 0)
         {

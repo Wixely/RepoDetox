@@ -8,6 +8,7 @@ public sealed class CliApplication(
     ILogger<CliApplication> logger,
     RepositoryAnalyzer repositoryAnalyzer,
     RepositoryVacuumService repositoryVacuumService,
+    RepositoryFlattenService repositoryFlattenService,
     PreviewServer previewServer)
 {
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
@@ -19,7 +20,7 @@ public sealed class CliApplication(
             with.HelpWriter = null;
         });
 
-        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, PreviewOptions>(args);
+        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, FlattenOptions, PreviewOptions>(args);
 
         try
         {
@@ -29,6 +30,7 @@ public sealed class CliApplication(
                 {
                     ListOptions options => await HandleListAsync(options, cancellationToken),
                     VacuumOptions options => await HandleVacuumAsync(options, cancellationToken),
+                    FlattenOptions options => await HandleFlattenAsync(options, cancellationToken),
                     PreviewOptions options => await previewServer.RunAsync(options, cancellationToken),
                     _ => throw new InvalidOperationException("Unsupported command line verb.")
                 };
@@ -77,6 +79,13 @@ public sealed class CliApplication(
     private async Task<int> HandleVacuumAsync(VacuumOptions options, CancellationToken cancellationToken)
     {
         var result = await repositoryVacuumService.VacuumAsync(options, cancellationToken);
+        Console.WriteLine(result.Message);
+        return 0;
+    }
+
+    private async Task<int> HandleFlattenAsync(FlattenOptions options, CancellationToken cancellationToken)
+    {
+        var result = await repositoryFlattenService.FlattenAsync(options, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }

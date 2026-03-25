@@ -31,6 +31,7 @@ public static class Program
             builder.Services.AddSingleton<GitCommandRunner>();
             builder.Services.AddSingleton<PreviewServer>();
             builder.Services.AddSingleton<RepositoryAnalyzer>();
+            builder.Services.AddSingleton<RepositoryFlattenService>();
             builder.Services.AddSingleton<RepositoryVacuumService>();
 
             RegisterGlobalExceptionLogging();
