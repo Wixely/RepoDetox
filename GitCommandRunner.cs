@@ -13,13 +13,108 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? standardInput = null)
     {
-        logger.LogDebug("Executing git {Arguments} in {WorkingDirectory}.", FormatArguments(arguments), workingDirectory);
+        return await RunProcessAsync(
+            "git",
+            workingDirectory,
+            arguments,
+            cancellationToken,
+            environmentVariables,
+            standardInput,
+            "Git could not be started. Ensure git is installed and available on PATH.",
+            "git");
+    }
+
+    public async Task<GitCommandResult> RunCheckedAsync(
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string?>? environmentVariables = null,
+        string? standardInput = null)
+    {
+        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables, standardInput);
+
+        if (result.ExitCode == 0)
+        {
+            return result;
+        }
+
+        var errorText = string.IsNullOrWhiteSpace(result.StandardError)
+            ? "Git returned a non-zero exit code without stderr output."
+            : result.StandardError.Trim();
+
+        throw new InvalidOperationException(
+            $"git {FormatArguments(arguments)} failed with exit code {result.ExitCode}. {errorText}");
+    }
+
+    public Task<GitCommandResult> RunExternalAsync(
+        string fileName,
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string?>? environmentVariables = null,
+        string? standardInput = null,
+        string? startupErrorMessage = null,
+        string? commandDisplayName = null) =>
+        RunProcessAsync(
+            fileName,
+            workingDirectory,
+            arguments,
+            cancellationToken,
+            environmentVariables,
+            standardInput,
+            startupErrorMessage ?? $"The command '{fileName}' could not be started.",
+            commandDisplayName ?? fileName);
+
+    public async Task<GitCommandResult> RunExternalCheckedAsync(
+        string fileName,
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, string?>? environmentVariables = null,
+        string? standardInput = null,
+        string? startupErrorMessage = null,
+        string? commandDisplayName = null)
+    {
+        var result = await RunExternalAsync(
+            fileName,
+            workingDirectory,
+            arguments,
+            cancellationToken,
+            environmentVariables,
+            standardInput,
+            startupErrorMessage,
+            commandDisplayName);
+
+        if (result.ExitCode == 0)
+        {
+            return result;
+        }
+
+        var errorText = string.IsNullOrWhiteSpace(result.StandardError)
+            ? "The command returned a non-zero exit code without stderr output."
+            : result.StandardError.Trim();
+
+        throw new InvalidOperationException(
+            $"{commandDisplayName ?? fileName} {FormatArguments(arguments)} failed with exit code {result.ExitCode}. {errorText}");
+    }
+
+    private async Task<GitCommandResult> RunProcessAsync(
+        string fileName,
+        string workingDirectory,
+        IReadOnlyList<string> arguments,
+        CancellationToken cancellationToken,
+        IReadOnlyDictionary<string, string?>? environmentVariables,
+        string? standardInput,
+        string startupErrorMessage,
+        string commandDisplayName)
+    {
+        logger.LogDebug("Executing {Command} {Arguments} in {WorkingDirectory}.", commandDisplayName, FormatArguments(arguments), workingDirectory);
 
         using var process = new Process
         {
             StartInfo = new ProcessStartInfo
             {
-                FileName = "git",
+                FileName = fileName,
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
@@ -48,7 +143,7 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         }
         catch (Win32Exception ex)
         {
-            throw new InvalidOperationException("Git could not be started. Ensure git is installed and available on PATH.", ex);
+            throw new InvalidOperationException(startupErrorMessage, ex);
         }
 
         var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
@@ -71,28 +166,6 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         var standardError = await standardErrorTask;
 
         return new GitCommandResult(process.ExitCode, standardOutput, standardError);
-    }
-
-    public async Task<GitCommandResult> RunCheckedAsync(
-        string workingDirectory,
-        IReadOnlyList<string> arguments,
-        CancellationToken cancellationToken = default,
-        IReadOnlyDictionary<string, string?>? environmentVariables = null,
-        string? standardInput = null)
-    {
-        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables, standardInput);
-
-        if (result.ExitCode == 0)
-        {
-            return result;
-        }
-
-        var errorText = string.IsNullOrWhiteSpace(result.StandardError)
-            ? "Git returned a non-zero exit code without stderr output."
-            : result.StandardError.Trim();
-
-        throw new InvalidOperationException(
-            $"git {FormatArguments(arguments)} failed with exit code {result.ExitCode}. {errorText}");
     }
 
     private static string FormatArguments(IEnumerable<string> arguments) =>

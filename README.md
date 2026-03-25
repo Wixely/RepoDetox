@@ -13,7 +13,15 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 
 - .NET 8 SDK or newer to build/publish
 - Git on `PATH`
-- `git filter-repo` on `PATH` for the `vacuum` command
+- `git-filter-repo.py` on `PATH` for the `vacuum` command
+
+If `git-filter-repo.py` is missing, a straightforward install is:
+
+```powershell
+python -m pip install git-filter-repo
+```
+
+Upstream installation instructions: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md
 
 ## Portable Build
 

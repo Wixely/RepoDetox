@@ -7,6 +7,8 @@ public sealed class RepositoryVacuumService(
     RepositoryAnalyzer repositoryAnalyzer,
     ILogger<RepositoryVacuumService> logger)
 {
+    private const string GitFilterRepoScriptName = "git-filter-repo.py";
+
     public async Task<VacuumResult> VacuumAsync(
         VacuumOptions options,
         CancellationToken cancellationToken = default)
@@ -45,11 +47,18 @@ public sealed class RepositoryVacuumService(
             shouldAnonymizeEmails);
 
         var filterRepoArguments = BuildFilterRepoArguments(
+            analysis.RepositoryRoot,
             analysis,
             shouldAnonymizeUsers,
             shouldAnonymizeEmails);
 
-        await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, filterRepoArguments, cancellationToken);
+        await gitCommandRunner.RunExternalCheckedAsync(
+            "python",
+            analysis.RepositoryRoot,
+            filterRepoArguments,
+            cancellationToken,
+            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
+            commandDisplayName: GitFilterRepoScriptName);
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
@@ -82,10 +91,14 @@ public sealed class RepositoryVacuumService(
 
     private async Task EnsureGitFilterRepoIsAvailableAsync(string repositoryRoot, CancellationToken cancellationToken)
     {
-        var result = await gitCommandRunner.RunAsync(
+        var scriptPath = ResolveGitFilterRepoScriptPath();
+        var result = await gitCommandRunner.RunExternalAsync(
+            "python",
             repositoryRoot,
-            ["filter-repo", "--version"],
-            cancellationToken);
+            [scriptPath, "--version"],
+            cancellationToken,
+            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
+            commandDisplayName: GitFilterRepoScriptName);
 
         if (result.ExitCode == 0)
         {
@@ -93,17 +106,21 @@ public sealed class RepositoryVacuumService(
         }
 
         throw new InvalidOperationException(
-            "The 'git filter-repo' command is required for vacuum. Install it before running this command.");
+            $"The '{GitFilterRepoScriptName}' script is required for vacuum. Place '{GitFilterRepoScriptName}' on PATH, " +
+            "install it with 'python -m pip install git-filter-repo', or see https://github.com/newren/git-filter-repo/blob/main/INSTALL.md " +
+            "for the upstream installation instructions.");
     }
 
     private static List<string> BuildFilterRepoArguments(
+        string repositoryRoot,
         RepositoryScanResult analysis,
         bool anonymizeUsers,
         bool anonymizeEmails)
     {
+        var scriptPath = ResolveGitFilterRepoScriptPath(repositoryRoot);
         var filterRepoArguments = new List<string>
         {
-            "filter-repo",
+            scriptPath,
             "--force"
         };
 
@@ -131,6 +148,36 @@ public sealed class RepositoryVacuumService(
         }
 
         return filterRepoArguments;
+    }
+
+    private static string ResolveGitFilterRepoScriptPath(string? repositoryRoot = null)
+    {
+        var searchDirectories = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(repositoryRoot))
+        {
+            searchDirectories.Add(repositoryRoot);
+        }
+
+        searchDirectories.Add(AppContext.BaseDirectory);
+
+        var pathValue = Environment.GetEnvironmentVariable("PATH");
+        if (!string.IsNullOrWhiteSpace(pathValue))
+        {
+            searchDirectories.AddRange(
+                pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+        }
+
+        foreach (var directory in searchDirectories.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var candidate = Path.Combine(directory, GitFilterRepoScriptName);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return GitFilterRepoScriptName;
     }
 
     private static string BuildSuccessMessage(
