@@ -97,7 +97,10 @@ public sealed class RepositoryAnalyzer(
 
         var historicalPaths = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var line in result.StandardOutput.Split(Environment.NewLine, StringSplitOptions.RemoveEmptyEntries))
+        using var reader = new StringReader(result.StandardOutput);
+        string? line;
+
+        while ((line = reader.ReadLine()) is not null)
         {
             var separatorIndex = line.IndexOf(' ');
 
