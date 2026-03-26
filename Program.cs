@@ -13,10 +13,16 @@ public static class Program
         try
         {
             var builder = Host.CreateApplicationBuilder(args);
+            var defaultLogPath = GetDefaultLogPath();
 
             builder.Configuration.Sources.Clear();
             builder.Configuration.SetBasePath(AppContext.BaseDirectory);
             builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
+            builder.Configuration.AddInMemoryCollection(
+                new Dictionary<string, string?>
+                {
+                    ["Serilog:WriteTo:1:Args:path"] = defaultLogPath
+                });
             builder.Configuration.AddEnvironmentVariables();
             builder.Configuration.AddCommandLine(args);
 
@@ -71,5 +77,13 @@ public static class Program
             Log.Error(eventArgs.Exception, "An unobserved task exception was raised.");
             eventArgs.SetObserved();
         };
+    }
+
+    private static string GetDefaultLogPath()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var logDirectory = Path.Combine(localAppData, "RepoDetox", "logs");
+        Directory.CreateDirectory(logDirectory);
+        return Path.Combine(logDirectory, "repodetox-.log");
     }
 }

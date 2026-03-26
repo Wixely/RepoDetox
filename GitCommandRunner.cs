@@ -11,7 +11,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
-        string? standardInput = null)
+        string? standardInput = null,
+        bool echoOutputToConsole = false)
     {
         return await RunProcessAsync(
             "git",
@@ -21,7 +22,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             environmentVariables,
             standardInput,
             "Git could not be started. Ensure git is installed and available on PATH.",
-            "git");
+            "git",
+            echoOutputToConsole);
     }
 
     public async Task<GitCommandResult> RunCheckedAsync(
@@ -29,9 +31,10 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyList<string> arguments,
         CancellationToken cancellationToken = default,
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
-        string? standardInput = null)
+        string? standardInput = null,
+        bool echoOutputToConsole = false)
     {
-        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables, standardInput);
+        var result = await RunAsync(workingDirectory, arguments, cancellationToken, environmentVariables, standardInput, echoOutputToConsole);
 
         if (result.ExitCode == 0)
         {
@@ -54,7 +57,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? standardInput = null,
         string? startupErrorMessage = null,
-        string? commandDisplayName = null) =>
+        string? commandDisplayName = null,
+        bool echoOutputToConsole = false) =>
         RunProcessAsync(
             fileName,
             workingDirectory,
@@ -63,7 +67,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             environmentVariables,
             standardInput,
             startupErrorMessage ?? $"The command '{fileName}' could not be started.",
-            commandDisplayName ?? fileName);
+            commandDisplayName ?? fileName,
+            echoOutputToConsole);
 
     public async Task<GitCommandResult> RunExternalCheckedAsync(
         string fileName,
@@ -73,7 +78,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyDictionary<string, string?>? environmentVariables = null,
         string? standardInput = null,
         string? startupErrorMessage = null,
-        string? commandDisplayName = null)
+        string? commandDisplayName = null,
+        bool echoOutputToConsole = false)
     {
         var result = await RunExternalAsync(
             fileName,
@@ -83,7 +89,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             environmentVariables,
             standardInput,
             startupErrorMessage,
-            commandDisplayName);
+            commandDisplayName,
+            echoOutputToConsole);
 
         if (result.ExitCode == 0)
         {
@@ -106,7 +113,8 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         IReadOnlyDictionary<string, string?>? environmentVariables,
         string? standardInput,
         string startupErrorMessage,
-        string commandDisplayName)
+        string commandDisplayName,
+        bool echoOutputToConsole)
     {
         logger.LogDebug("Executing {Command} {Arguments} in {WorkingDirectory}.", commandDisplayName, FormatArguments(arguments), workingDirectory);
 
@@ -146,8 +154,14 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
             throw new InvalidOperationException(startupErrorMessage, ex);
         }
 
-        var standardOutputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        var standardErrorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        var standardOutputTask = ReadStreamAsync(
+            process.StandardOutput,
+            echoOutputToConsole ? Console.Out : null,
+            cancellationToken);
+        var standardErrorTask = ReadStreamAsync(
+            process.StandardError,
+            echoOutputToConsole ? Console.Error : null,
+            cancellationToken);
         Task? standardInputTask = null;
 
         if (standardInput is not null)
@@ -182,5 +196,33 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
         await process.StandardInput.FlushAsync();
         process.StandardInput.Close();
+    }
+
+    private static async Task<string> ReadStreamAsync(
+        StreamReader reader,
+        TextWriter? mirrorWriter,
+        CancellationToken cancellationToken)
+    {
+        var buffer = new char[4096];
+        var builder = new System.Text.StringBuilder();
+
+        while (true)
+        {
+            var read = await reader.ReadAsync(buffer.AsMemory(), cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            builder.Append(buffer, 0, read);
+
+            if (mirrorWriter is not null)
+            {
+                await mirrorWriter.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                await mirrorWriter.FlushAsync(cancellationToken);
+            }
+        }
+
+        return builder.ToString();
     }
 }

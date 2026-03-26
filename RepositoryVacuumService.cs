@@ -15,6 +15,10 @@ public sealed class RepositoryVacuumService(
     {
         var analysis = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
 
+        Console.WriteLine("Vacuum analysis:");
+        RepositoryScanConsoleWriter.Write(analysis);
+        Console.WriteLine();
+
         if (analysis.HistoricalOnlyPaths.Count == 0)
         {
             return new VacuumResult(
@@ -42,14 +46,24 @@ public sealed class RepositoryVacuumService(
 
         var filterRepoArguments = BuildFilterRepoArguments(analysis.RepositoryRoot, analysis);
 
+        Console.WriteLine("Starting history rewrite with git-filter-repo...");
+        Console.WriteLine("Progress output will appear below.");
+        Console.WriteLine();
+
         await gitCommandRunner.RunExternalCheckedAsync(
             "python",
             analysis.RepositoryRoot,
             filterRepoArguments,
             cancellationToken,
             startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-            commandDisplayName: GitFilterRepoScriptName);
+            commandDisplayName: GitFilterRepoScriptName,
+            echoOutputToConsole: true);
+
+        Console.WriteLine();
+        Console.WriteLine("Expiring reflogs...");
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
+
+        Console.WriteLine("Running git gc...");
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
         var message =
