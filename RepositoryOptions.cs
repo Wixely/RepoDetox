@@ -10,6 +10,10 @@ public abstract class RepositoryOptions
     [Option('r', "repo", HelpText = "Path to the git repository to inspect. Defaults to the current directory.")]
     public string? RepositoryPathOption { get; set; }
 
+    public bool HasExplicitRepositoryPath =>
+        !string.IsNullOrWhiteSpace(RepositoryPathArgument) ||
+        !string.IsNullOrWhiteSpace(RepositoryPathOption);
+
     public string RepositoryPath =>
         !string.IsNullOrWhiteSpace(RepositoryPathArgument)
             ? RepositoryPathArgument

@@ -66,6 +66,12 @@ public sealed class CliApplication(
 
     private async Task<int> HandleVacuumAsync(VacuumOptions options, CancellationToken cancellationToken)
     {
+        if (!options.HasExplicitRepositoryPath)
+        {
+            Console.Error.WriteLine("Error: vacuum requires an explicit repository path. Pass --repo <path> or a positional path, even if it is just '.'.");
+            return 1;
+        }
+
         var result = await repositoryVacuumService.VacuumAsync(options, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
@@ -73,6 +79,12 @@ public sealed class CliApplication(
 
     private async Task<int> HandleAnonymiseAsync(AnonymiseOptions options, CancellationToken cancellationToken)
     {
+        if (!options.HasExplicitRepositoryPath)
+        {
+            Console.Error.WriteLine("Error: anonymise requires an explicit repository path. Pass --repo <path> or a positional path, even if it is just '.'.");
+            return 1;
+        }
+
         var result = await repositoryAnonymiseService.AnonymiseAsync(options, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
@@ -80,6 +92,12 @@ public sealed class CliApplication(
 
     private async Task<int> HandleFlattenAsync(FlattenOptions options, CancellationToken cancellationToken)
     {
+        if (!options.HasExplicitRepositoryPath)
+        {
+            Console.Error.WriteLine("Error: flatten requires an explicit repository path. Pass --repo <path> or a positional path, even if it is just '.'.");
+            return 1;
+        }
+
         var result = await repositoryFlattenService.FlattenAsync(options, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
