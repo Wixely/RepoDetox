@@ -1,12 +1,12 @@
 # RepoDetox
 
-Placeholder repository for a .NET 8 command-line tool that inspects a git repository, lists files that only exist in history, and can vacuum those paths out of history.
+Placeholder repository for a .NET 8 command-line tool that inspects a git repository, lists files that were deleted from history and are no longer present on any live ref, and can vacuum those paths out of history.
 
 ## Current Commands
 
-- `list`: shows files that appear in repository history but no longer exist on the current branch.
+- `list`: shows files that were deleted in history and are no longer present on any live ref.
 - `flatten`: rewrites the repository to a single root commit that matches the current HEAD state, removing all other refs and history.
-- `vacuum`: rewrites history to remove the same file set after confirmation, then expires reflogs and runs garbage collection.
+- `vacuum`: rewrites history to remove files that were deleted and are no longer present on any live ref, then expires reflogs and runs garbage collection.
 - `anonymise`: rewrites history to anonymise commit/tag usernames and emails without removing files.
 - `preview`: starts a local browser view for the current analysis to support editor debugging. This is opt-in and requires `Preview:Enabled` to be set to `true` in `appsettings.json`.
 

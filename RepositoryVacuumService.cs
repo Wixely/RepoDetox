@@ -19,7 +19,7 @@ public sealed class RepositoryVacuumService(
         {
             return new VacuumResult(
                 false,
-                $"No historical-only paths were found in {analysis.RepositoryRoot}. Nothing to rewrite.");
+                $"No deleted paths were found in {analysis.RepositoryRoot} that are absent from all live refs. Nothing to rewrite.");
         }
 
         await EnsureRepositoryIsCleanAsync(analysis.RepositoryRoot, cancellationToken);
@@ -36,7 +36,7 @@ public sealed class RepositoryVacuumService(
         }
 
         logger.LogWarning(
-            "Rewriting history for {RepositoryRoot}. Removing {Count} historical-only paths.",
+            "Rewriting history for {RepositoryRoot}. Removing {Count} deleted historical paths that are absent from all live refs.",
             analysis.RepositoryRoot,
             analysis.HistoricalOnlyPaths.Count);
 
@@ -53,7 +53,7 @@ public sealed class RepositoryVacuumService(
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
         var message =
-            $"Completed history rewrite in {analysis.RepositoryRoot}: removed {analysis.HistoricalOnlyPaths.Count} path(s) from history. " +
+            $"Completed history rewrite in {analysis.RepositoryRoot}: removed {analysis.HistoricalOnlyPaths.Count} deleted path(s) from history. " +
             "The repository was then compacted.";
 
         logger.LogInformation(message);
@@ -162,7 +162,7 @@ public sealed class RepositoryVacuumService(
 
     private static void WriteRewriteWarnings(RepositoryScanResult analysis)
     {
-        Console.WriteLine("Warning: this will rewrite git history to remove historical-only files.");
+        Console.WriteLine("Warning: this will rewrite git history to remove files that were deleted and are no longer present on any live ref.");
         Console.WriteLine($"Repository: {analysis.RepositoryRoot}");
         Console.WriteLine($"Current branch: {analysis.CurrentBranch}");
         Console.WriteLine($"Paths to remove: {analysis.HistoricalOnlyPaths.Count}");

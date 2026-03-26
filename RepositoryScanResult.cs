@@ -4,7 +4,8 @@ public sealed record RepositoryScanResult(
     string RepositoryRoot,
     string CurrentBranch,
     int CurrentTrackedFileCount,
-    int HistoricalPathCount,
+    int DeletedPathCount,
+    int LivePathCount,
     IReadOnlyList<HistoricalPathEntry> HistoricalOnlyPathEntries)
 {
     public IReadOnlyList<string> HistoricalOnlyPaths { get; } =

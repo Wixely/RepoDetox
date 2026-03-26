@@ -2,7 +2,7 @@ using CommandLine;
 
 namespace RepoDetox;
 
-[Verb("list", HelpText = "List files that exist in git history but no longer exist on the current branch.")]
+[Verb("list", HelpText = "List files that were deleted in history and are no longer present on any live ref.")]
 public sealed class ListOptions : RepositoryOptions
 {
 }

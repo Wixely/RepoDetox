@@ -24,21 +24,26 @@ public sealed class RepositoryAnalyzer(
         logger.LogInformation("Loading tracked files from the current branch for {RepositoryRoot}.", repositoryRoot);
         var currentFiles = await GetCurrentFilesAsync(repositoryRoot, cancellationToken);
 
-        logger.LogInformation("Scanning all historical objects for {RepositoryRoot}. This can take a while on large repositories.", repositoryRoot);
-        var historicalPathObjectIds = await GetHistoricalPathObjectIdsAsync(repositoryRoot, cancellationToken);
+        logger.LogInformation("Scanning deleted paths across repository history for {RepositoryRoot}.", repositoryRoot);
+        var deletedPaths = await GetDeletedPathsAsync(repositoryRoot, cancellationToken);
 
-        logger.LogInformation("Resolving historical file sizes for {RepositoryRoot}.", repositoryRoot);
+        logger.LogInformation("Loading paths that still exist on live refs for {RepositoryRoot}.", repositoryRoot);
+        var livePaths = await GetLivePathsAcrossRefsAsync(repositoryRoot, cancellationToken);
+
+        logger.LogInformation("Resolving historical file sizes for deleted paths in {RepositoryRoot}.", repositoryRoot);
         var historicalOnlyPathEntries = await BuildHistoricalOnlyPathEntriesAsync(
             repositoryRoot,
-            currentFiles,
-            historicalPathObjectIds,
+            deletedPaths,
+            livePaths,
             cancellationToken);
 
         logger.LogInformation(
-            "Analyzed {RepositoryRoot}. Branch={CurrentBranch}, CurrentFiles={CurrentFiles}, HistoricalOnlyPaths={HistoricalOnlyPaths}.",
+            "Analyzed {RepositoryRoot}. Branch={CurrentBranch}, CurrentFiles={CurrentFiles}, DeletedPaths={DeletedPaths}, LivePaths={LivePaths}, RemovablePaths={HistoricalOnlyPaths}.",
             repositoryRoot,
             currentBranch,
             currentFiles.Count,
+            deletedPaths.Count,
+            livePaths.Count,
             historicalOnlyPathEntries.Count);
 
         logger.LogInformation(
@@ -50,7 +55,8 @@ public sealed class RepositoryAnalyzer(
             repositoryRoot,
             currentBranch,
             currentFiles.Count,
-            historicalPathObjectIds.Count,
+            deletedPaths.Count,
+            livePaths.Count,
             historicalOnlyPathEntries);
     }
 
@@ -107,70 +113,80 @@ public sealed class RepositoryAnalyzer(
         return new HashSet<string>(values, StringComparer.Ordinal);
     }
 
-    private async Task<Dictionary<string, HashSet<string>>> GetHistoricalPathObjectIdsAsync(
+    private async Task<HashSet<string>> GetDeletedPathsAsync(
         string repositoryRoot,
         CancellationToken cancellationToken)
     {
         var result = await gitCommandRunner.RunCheckedAsync(
             repositoryRoot,
-            ["rev-list", "--objects", "--all"],
+            ["log", "--all", "--diff-filter=D", "--name-only", "--format=", "-z", "-M"],
             cancellationToken);
 
-        var historicalPathObjectIds = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        return SplitNullSeparatedValues(result.StandardOutput);
+    }
 
-        using var reader = new StringReader(result.StandardOutput);
-        string? line;
+    private async Task<HashSet<string>> GetLivePathsAcrossRefsAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
+    {
+        var refsResult = await gitCommandRunner.RunCheckedAsync(
+            repositoryRoot,
+            ["for-each-ref", "--format=%(refname)"],
+            cancellationToken);
 
-        while ((line = reader.ReadLine()) is not null)
+        var refs = SplitLines(refsResult.StandardOutput);
+
+        var livePaths = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var refName in refs)
         {
-            var firstSeparatorIndex = line.IndexOf(' ');
-            if (firstSeparatorIndex < 0 || firstSeparatorIndex == line.Length - 1)
+            var treeResult = await gitCommandRunner.RunCheckedAsync(
+                repositoryRoot,
+                ["ls-tree", "-r", "--name-only", "-z", "--full-tree", $"{refName}^{{tree}}"],
+                cancellationToken);
+
+            foreach (var path in SplitNullSeparatedValues(treeResult.StandardOutput))
             {
-                continue;
+                livePaths.Add(path);
             }
-
-            var objectId = line[..firstSeparatorIndex];
-            var path = line[(firstSeparatorIndex + 1)..];
-
-            if (!historicalPathObjectIds.TryGetValue(path, out var objectIds))
-            {
-                objectIds = new HashSet<string>(StringComparer.Ordinal);
-                historicalPathObjectIds[path] = objectIds;
-            }
-
-            objectIds.Add(objectId);
         }
 
-        return historicalPathObjectIds;
+        return livePaths;
     }
 
     private async Task<IReadOnlyList<HistoricalPathEntry>> BuildHistoricalOnlyPathEntriesAsync(
         string repositoryRoot,
-        HashSet<string> currentFiles,
-        Dictionary<string, HashSet<string>> historicalPathObjectIds,
+        HashSet<string> deletedPaths,
+        HashSet<string> livePaths,
         CancellationToken cancellationToken)
     {
-        var historicalOnlyPathEntries = historicalPathObjectIds
-            .Where(entry => !currentFiles.Contains(entry.Key))
-            .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase)
+        var candidatePaths = deletedPaths
+            .Where(path => !livePaths.Contains(path))
+            .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-        if (historicalOnlyPathEntries.Length == 0)
+        if (candidatePaths.Length == 0)
         {
             return Array.Empty<HistoricalPathEntry>();
         }
 
-        var objectSizes = await GetObjectSizesAsync(
+        var historicalPathObjectIds = await GetHistoricalPathObjectIdsAsync(
             repositoryRoot,
-            historicalOnlyPathEntries.SelectMany(entry => entry.Value).Distinct(StringComparer.Ordinal),
+            candidatePaths,
             cancellationToken);
 
-        return historicalOnlyPathEntries
-            .Select(entry =>
+        var objectSizes = await GetObjectSizesAsync(
+            repositoryRoot,
+            historicalPathObjectIds.Values.SelectMany(entry => entry).Distinct(StringComparer.Ordinal),
+            cancellationToken);
+
+        return candidatePaths
+            .Select(path =>
             {
                 long? maxSizeBytes = null;
+                historicalPathObjectIds.TryGetValue(path, out var objectIds);
 
-                foreach (var objectId in entry.Value)
+                foreach (var objectId in objectIds ?? [])
                 {
                     if (!objectSizes.TryGetValue(objectId, out var sizeBytes))
                     {
@@ -182,9 +198,53 @@ public sealed class RepositoryAnalyzer(
                         : Math.Max(maxSizeBytes.Value, sizeBytes);
                 }
 
-                return new HistoricalPathEntry(entry.Key, maxSizeBytes);
+                return new HistoricalPathEntry(path, maxSizeBytes);
             })
             .ToArray();
+    }
+
+    private async Task<Dictionary<string, HashSet<string>>> GetHistoricalPathObjectIdsAsync(
+        string repositoryRoot,
+        IReadOnlyList<string> paths,
+        CancellationToken cancellationToken)
+    {
+        var historicalPathObjectIds = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+
+        foreach (var batch in Batch(paths, 256))
+        {
+            var arguments = new List<string> { "rev-list", "--objects", "--all", "--" };
+            arguments.AddRange(batch.Select(ToLiteralPathspec));
+
+            var result = await gitCommandRunner.RunCheckedAsync(
+                repositoryRoot,
+                arguments,
+                cancellationToken);
+
+            using var reader = new StringReader(result.StandardOutput);
+            string? line;
+
+            while ((line = reader.ReadLine()) is not null)
+            {
+                var firstSeparatorIndex = line.IndexOf(' ');
+                if (firstSeparatorIndex < 0 || firstSeparatorIndex == line.Length - 1)
+                {
+                    continue;
+                }
+
+                var objectId = line[..firstSeparatorIndex];
+                var path = line[(firstSeparatorIndex + 1)..];
+
+                if (!historicalPathObjectIds.TryGetValue(path, out var objectIds))
+                {
+                    objectIds = new HashSet<string>(StringComparer.Ordinal);
+                    historicalPathObjectIds[path] = objectIds;
+                }
+
+                objectIds.Add(objectId);
+            }
+        }
+
+        return historicalPathObjectIds;
     }
 
     private async Task<Dictionary<string, long>> GetObjectSizesAsync(
@@ -241,4 +301,30 @@ public sealed class RepositoryAnalyzer(
 
     private static string ResolveWorkingPath(string repositoryPath) =>
         Path.GetFullPath(string.IsNullOrWhiteSpace(repositoryPath) ? "." : repositoryPath);
+
+    private static HashSet<string> SplitNullSeparatedValues(string value) =>
+        new(
+            value.Split('\0', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries),
+            StringComparer.Ordinal);
+
+    private static string[] SplitLines(string value) =>
+        value.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    private static IEnumerable<IReadOnlyList<T>> Batch<T>(IReadOnlyList<T> items, int size)
+    {
+        for (var index = 0; index < items.Count; index += size)
+        {
+            var count = Math.Min(size, items.Count - index);
+            var batch = new T[count];
+            for (var offset = 0; offset < count; offset++)
+            {
+                batch[offset] = items[index + offset];
+            }
+
+            yield return batch;
+        }
+    }
+
+    private static string ToLiteralPathspec(string path) =>
+        $":(literal){path}";
 }

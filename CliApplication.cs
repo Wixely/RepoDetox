@@ -64,13 +64,14 @@ public sealed class CliApplication(
         Console.WriteLine($"Repository: {result.RepositoryRoot}");
         Console.WriteLine($"Current branch: {result.CurrentBranch}");
         Console.WriteLine($"Tracked files on current branch: {result.CurrentTrackedFileCount}");
-        Console.WriteLine($"Distinct historical paths: {result.HistoricalPathCount}");
+        Console.WriteLine($"Deleted paths seen in history: {result.DeletedPathCount}");
+        Console.WriteLine($"Paths still live on refs: {result.LivePathCount}");
         Console.WriteLine($"Paths eligible for removal: {result.HistoricalOnlyPaths.Count}");
         Console.WriteLine();
 
         if (result.HistoricalOnlyPaths.Count == 0)
         {
-            Console.WriteLine("No historical-only paths were found.");
+            Console.WriteLine("No deleted paths were found that are absent from all live refs.");
             return 0;
         }
 

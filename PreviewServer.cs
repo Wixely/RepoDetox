@@ -120,7 +120,7 @@ public sealed class PreviewServer(
     private static string BuildHtml(RepositoryScanResult analysis)
     {
         var items = analysis.HistoricalOnlyPaths.Count == 0
-            ? "<li>No historical-only paths were found.</li>"
+            ? "<li>No deleted paths were found that are absent from all live refs.</li>"
             : string.Join(
                 Environment.NewLine,
                 analysis.HistoricalOnlyPaths.Select(path => $"<li><code>{WebUtility.HtmlEncode(path)}</code></li>"));
@@ -197,7 +197,7 @@ public sealed class PreviewServer(
                     <main>
                         <div class="card">
                             <h1>RepoDetox</h1>
-                            <p>Previewing files that still exist in history but no longer exist on the current branch.</p>
+                            <p>Previewing paths that were deleted in history and no longer exist on any live ref.</p>
                             <dl>
                                 <div>
                                     <dt>Repository</dt>
@@ -212,8 +212,12 @@ public sealed class PreviewServer(
                                     <dd>{{analysis.CurrentTrackedFileCount}}</dd>
                                 </div>
                                 <div>
-                                    <dt>Historical Paths</dt>
-                                    <dd>{{analysis.HistoricalPathCount}}</dd>
+                                    <dt>Deleted Paths</dt>
+                                    <dd>{{analysis.DeletedPathCount}}</dd>
+                                </div>
+                                <div>
+                                    <dt>Live Ref Paths</dt>
+                                    <dd>{{analysis.LivePathCount}}</dd>
                                 </div>
                                 <div>
                                     <dt>To Remove</dt>
