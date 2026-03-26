@@ -14,12 +14,8 @@ public sealed class RepositoryVacuumService(
         CancellationToken cancellationToken = default)
     {
         var analysis = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
-        var shouldAnonymizeUsers = options.ShouldAnonymizeUsers;
-        var shouldAnonymizeEmails = options.ShouldAnonymizeEmails;
-        var shouldRemovePaths = analysis.HistoricalOnlyPaths.Count > 0;
-        var shouldAnonymize = shouldAnonymizeUsers || shouldAnonymizeEmails;
 
-        if (!shouldRemovePaths && !shouldAnonymize)
+        if (analysis.HistoricalOnlyPaths.Count == 0)
         {
             return new VacuumResult(
                 false,
@@ -31,26 +27,20 @@ public sealed class RepositoryVacuumService(
 
         if (options.Force)
         {
-            WriteRewriteWarnings(analysis, shouldAnonymizeUsers, shouldAnonymizeEmails);
+            WriteRewriteWarnings(analysis);
         }
-        else if (!ConfirmRewrite(analysis, shouldAnonymizeUsers, shouldAnonymizeEmails))
+        else if (!ConfirmRewrite(analysis))
         {
             logger.LogWarning("Vacuum command was cancelled by the operator for {RepositoryRoot}.", analysis.RepositoryRoot);
             return new VacuumResult(false, "History rewrite cancelled.");
         }
 
         logger.LogWarning(
-            "Rewriting history for {RepositoryRoot}. Removing {Count} historical-only paths. AnonymizeUsers={AnonymizeUsers}. AnonymizeEmails={AnonymizeEmails}.",
+            "Rewriting history for {RepositoryRoot}. Removing {Count} historical-only paths.",
             analysis.RepositoryRoot,
-            analysis.HistoricalOnlyPaths.Count,
-            shouldAnonymizeUsers,
-            shouldAnonymizeEmails);
+            analysis.HistoricalOnlyPaths.Count);
 
-        var filterRepoArguments = BuildFilterRepoArguments(
-            analysis.RepositoryRoot,
-            analysis,
-            shouldAnonymizeUsers,
-            shouldAnonymizeEmails);
+        var filterRepoArguments = BuildFilterRepoArguments(analysis.RepositoryRoot, analysis);
 
         await gitCommandRunner.RunExternalCheckedAsync(
             "python",
@@ -62,11 +52,9 @@ public sealed class RepositoryVacuumService(
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
-        var message = BuildSuccessMessage(
-            analysis.RepositoryRoot,
-            analysis.HistoricalOnlyPaths.Count,
-            shouldAnonymizeUsers,
-            shouldAnonymizeEmails);
+        var message =
+            $"Completed history rewrite in {analysis.RepositoryRoot}: removed {analysis.HistoricalOnlyPaths.Count} path(s) from history. " +
+            "The repository was then compacted.";
 
         logger.LogInformation(message);
 
@@ -113,38 +101,20 @@ public sealed class RepositoryVacuumService(
 
     private static List<string> BuildFilterRepoArguments(
         string repositoryRoot,
-        RepositoryScanResult analysis,
-        bool anonymizeUsers,
-        bool anonymizeEmails)
+        RepositoryScanResult analysis)
     {
         var scriptPath = ResolveGitFilterRepoScriptPath(repositoryRoot);
         var filterRepoArguments = new List<string>
         {
             scriptPath,
-            "--force"
+            "--force",
+            "--invert-paths"
         };
 
-        if (analysis.HistoricalOnlyPaths.Count > 0)
+        foreach (var path in analysis.HistoricalOnlyPaths)
         {
-            filterRepoArguments.Add("--invert-paths");
-
-            foreach (var path in analysis.HistoricalOnlyPaths)
-            {
-                filterRepoArguments.Add("--path");
-                filterRepoArguments.Add(path);
-            }
-        }
-
-        if (anonymizeUsers)
-        {
-            filterRepoArguments.Add("--name-callback");
-            filterRepoArguments.Add(BuildAnonymizeUserCallback());
-        }
-
-        if (anonymizeEmails)
-        {
-            filterRepoArguments.Add("--email-callback");
-            filterRepoArguments.Add(BuildAnonymizeEmailCallback());
+            filterRepoArguments.Add("--path");
+            filterRepoArguments.Add(path);
         }
 
         return filterRepoArguments;
@@ -180,33 +150,9 @@ public sealed class RepositoryVacuumService(
         return GitFilterRepoScriptName;
     }
 
-    private static string BuildSuccessMessage(
-        string repositoryRoot,
-        int removedPathCount,
-        bool anonymizeUsers,
-        bool anonymizeEmails)
+    private static bool ConfirmRewrite(RepositoryScanResult analysis)
     {
-        var actions = new List<string>();
-
-        if (removedPathCount > 0)
-        {
-            actions.Add($"removed {removedPathCount} path(s) from history");
-        }
-
-        if (anonymizeUsers || anonymizeEmails)
-        {
-            actions.Add($"anonymized {DescribeAnonymizationTargets(anonymizeUsers, anonymizeEmails)}");
-        }
-
-        return $"Completed history rewrite in {repositoryRoot}: {string.Join(" and ", actions)}. The repository was then compacted.";
-    }
-
-    private static bool ConfirmRewrite(
-        RepositoryScanResult analysis,
-        bool anonymizeUsers,
-        bool anonymizeEmails)
-    {
-        WriteRewriteWarnings(analysis, anonymizeUsers, anonymizeEmails);
+        WriteRewriteWarnings(analysis);
         Console.Write("Continue? [y/N]: ");
 
         var response = Console.ReadLine();
@@ -214,35 +160,12 @@ public sealed class RepositoryVacuumService(
             || string.Equals(response, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void WriteRewriteWarnings(
-        RepositoryScanResult analysis,
-        bool anonymizeUsers,
-        bool anonymizeEmails)
+    private static void WriteRewriteWarnings(RepositoryScanResult analysis)
     {
-        Console.WriteLine("Warning: this will rewrite git history.");
+        Console.WriteLine("Warning: this will rewrite git history to remove historical-only files.");
         Console.WriteLine($"Repository: {analysis.RepositoryRoot}");
         Console.WriteLine($"Current branch: {analysis.CurrentBranch}");
         Console.WriteLine($"Paths to remove: {analysis.HistoricalOnlyPaths.Count}");
-
-        if (anonymizeUsers || anonymizeEmails)
-        {
-            Console.WriteLine($"Anonymize: {DescribeAnonymizationTargets(anonymizeUsers, anonymizeEmails)}");
-            Console.WriteLine("Warning: anonymizing identities changes commit hashes and can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
-        }
-
         Console.WriteLine();
     }
-
-    private static string DescribeAnonymizationTargets(bool anonymizeUsers, bool anonymizeEmails) =>
-        anonymizeUsers && anonymizeEmails
-            ? "usernames and emails"
-            : anonymizeUsers
-                ? "usernames"
-                : "emails";
-
-    private static string BuildAnonymizeUserCallback() =>
-        "import hashlib; return b\"anonymous-user-\" + hashlib.sha256(name).hexdigest()[:12].encode(\"ascii\")";
-
-    private static string BuildAnonymizeEmailCallback() =>
-        "import hashlib; return b\"anonymous-email-\" + hashlib.sha256(email).hexdigest()[:12].encode(\"ascii\") + b\"@example.invalid\"";
 }

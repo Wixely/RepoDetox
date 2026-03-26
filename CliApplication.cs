@@ -7,6 +7,7 @@ namespace RepoDetox;
 public sealed class CliApplication(
     ILogger<CliApplication> logger,
     RepositoryAnalyzer repositoryAnalyzer,
+    RepositoryAnonymiseService repositoryAnonymiseService,
     RepositoryVacuumService repositoryVacuumService,
     RepositoryFlattenService repositoryFlattenService,
     PreviewServer previewServer)
@@ -20,7 +21,7 @@ public sealed class CliApplication(
             with.HelpWriter = null;
         });
 
-        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, FlattenOptions, PreviewOptions>(args);
+        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, AnonymiseOptions, FlattenOptions, PreviewOptions>(args);
 
         try
         {
@@ -30,6 +31,7 @@ public sealed class CliApplication(
                 {
                     ListOptions options => await HandleListAsync(options, cancellationToken),
                     VacuumOptions options => await HandleVacuumAsync(options, cancellationToken),
+                    AnonymiseOptions options => await HandleAnonymiseAsync(options, cancellationToken),
                     FlattenOptions options => await HandleFlattenAsync(options, cancellationToken),
                     PreviewOptions options => await previewServer.RunAsync(options, cancellationToken),
                     _ => throw new InvalidOperationException("Unsupported command line verb.")
@@ -86,6 +88,13 @@ public sealed class CliApplication(
     private async Task<int> HandleVacuumAsync(VacuumOptions options, CancellationToken cancellationToken)
     {
         var result = await repositoryVacuumService.VacuumAsync(options, cancellationToken);
+        Console.WriteLine(result.Message);
+        return 0;
+    }
+
+    private async Task<int> HandleAnonymiseAsync(AnonymiseOptions options, CancellationToken cancellationToken)
+    {
+        var result = await repositoryAnonymiseService.AnonymiseAsync(options, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }

@@ -49,6 +49,21 @@
         "reveal": "always",
         "panel": "dedicated"
       }
+    },
+    {
+      "label": "run:anonymise",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/RepoDetox.csproj",
+        "--",
+        "anonymise",
+        "--repo",
+        "${workspaceFolder}"
+      ],
+      "problemMatcher": "$msCompile"
     }
   ]
 }
