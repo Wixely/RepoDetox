@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using System.Text;
 
 namespace RepoDetox;
 
@@ -47,20 +48,28 @@ public sealed class RepositoryVacuumService(
             analysis.RepositoryRoot,
             analysis.HistoricalOnlyPaths.Count);
 
-        var filterRepoArguments = BuildFilterRepoArguments(analysis.RepositoryRoot, analysis);
+        var pathsFilePath = await WritePathsFileAsync(analysis.RepositoryRoot, analysis.HistoricalOnlyPaths, cancellationToken);
+        var filterRepoArguments = BuildFilterRepoArguments(analysis.RepositoryRoot, pathsFilePath);
 
         Console.WriteLine("Starting history rewrite with git-filter-repo...");
         Console.WriteLine("Progress output will appear below.");
         Console.WriteLine();
 
-        await gitCommandRunner.RunExternalCheckedAsync(
-            "python",
-            analysis.RepositoryRoot,
-            filterRepoArguments,
-            cancellationToken,
-            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-            commandDisplayName: GitFilterRepoScriptName,
-            echoOutputToConsole: true);
+        try
+        {
+            await gitCommandRunner.RunExternalCheckedAsync(
+                "python",
+                analysis.RepositoryRoot,
+                filterRepoArguments,
+                cancellationToken,
+                startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
+                commandDisplayName: GitFilterRepoScriptName,
+                echoOutputToConsole: true);
+        }
+        finally
+        {
+            TryDeleteTemporaryFile(pathsFilePath);
+        }
 
         Console.WriteLine();
         Console.WriteLine("Expiring reflogs...");
@@ -124,23 +133,54 @@ public sealed class RepositoryVacuumService(
 
     private static List<string> BuildFilterRepoArguments(
         string repositoryRoot,
-        RepositoryScanResult analysis)
+        string pathsFilePath)
     {
         var scriptPath = ResolveGitFilterRepoScriptPath(repositoryRoot);
-        var filterRepoArguments = new List<string>
-        {
+        return
+        [
             scriptPath,
             "--force",
-            "--invert-paths"
-        };
+            "--invert-paths",
+            "--paths-from-file",
+            pathsFilePath
+        ];
+    }
 
-        foreach (var path in analysis.HistoricalOnlyPaths)
+    private static async Task<string> WritePathsFileAsync(
+        string repositoryRoot,
+        IReadOnlyList<string> historicalOnlyPaths,
+        CancellationToken cancellationToken)
+    {
+        var pathsFilePath = Path.Combine(
+            repositoryRoot,
+            $".repo-detox-vacuum-paths-{Guid.NewGuid():N}.txt");
+
+        var contents = string.Join(
+            Environment.NewLine,
+            historicalOnlyPaths.Select(path => $"literal:{path}"));
+
+        await File.WriteAllTextAsync(
+            pathsFilePath,
+            contents + Environment.NewLine,
+            new UTF8Encoding(false),
+            cancellationToken);
+
+        return pathsFilePath;
+    }
+
+    private void TryDeleteTemporaryFile(string pathsFilePath)
+    {
+        try
         {
-            filterRepoArguments.Add("--path");
-            filterRepoArguments.Add(path);
+            if (File.Exists(pathsFilePath))
+            {
+                File.Delete(pathsFilePath);
+            }
         }
-
-        return filterRepoArguments;
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to delete temporary git-filter-repo paths file {PathsFilePath}.", pathsFilePath);
+        }
     }
 
     private static string ResolveGitFilterRepoScriptPath(string? repositoryRoot = null)
