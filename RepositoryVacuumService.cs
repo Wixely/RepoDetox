@@ -14,6 +14,7 @@ public sealed class RepositoryVacuumService(
         CancellationToken cancellationToken = default)
     {
         var analysis = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
+        var remotes = await GetConfiguredRemotesAsync(analysis.RepositoryRoot, cancellationToken);
 
         Console.WriteLine("Vacuum analysis:");
         RepositoryScanConsoleWriter.Write(analysis);
@@ -29,11 +30,13 @@ public sealed class RepositoryVacuumService(
         await EnsureRepositoryIsCleanAsync(analysis.RepositoryRoot, cancellationToken);
         await EnsureGitFilterRepoIsAvailableAsync(analysis.RepositoryRoot, cancellationToken);
 
+        var restoreRemotesAfterRewrite = false;
+
         if (options.Force)
         {
-            WriteRewriteWarnings(analysis);
+            WriteRewriteWarnings(analysis, remotes);
         }
-        else if (!ConfirmRewrite(analysis))
+        else if (!ConfirmRewrite(analysis, remotes, out restoreRemotesAfterRewrite))
         {
             logger.LogWarning("Vacuum command was cancelled by the operator for {RepositoryRoot}.", analysis.RepositoryRoot);
             return new VacuumResult(false, "History rewrite cancelled.");
@@ -66,9 +69,15 @@ public sealed class RepositoryVacuumService(
         Console.WriteLine("Running git gc...");
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
+        if (restoreRemotesAfterRewrite && remotes.Count > 0)
+        {
+            Console.WriteLine("Restoring saved remotes...");
+            await RestoreRemotesAsync(analysis.RepositoryRoot, remotes, cancellationToken);
+        }
+
         var message =
             $"Completed history rewrite in {analysis.RepositoryRoot}: removed {analysis.HistoricalOnlyPaths.Count} deleted path(s) from history. " +
-            "The repository was then compacted.";
+            $"The repository was then compacted{BuildRemoteRestoreSuffix(restoreRemotesAfterRewrite, remotes.Count)}.";
 
         logger.LogInformation(message);
 
@@ -164,9 +173,72 @@ public sealed class RepositoryVacuumService(
         return GitFilterRepoScriptName;
     }
 
-    private static bool ConfirmRewrite(RepositoryScanResult analysis)
+    private async Task<IReadOnlyList<RemoteConfiguration>> GetConfiguredRemotesAsync(
+        string repositoryRoot,
+        CancellationToken cancellationToken)
     {
-        WriteRewriteWarnings(analysis);
+        var listResult = await gitCommandRunner.RunCheckedAsync(
+            repositoryRoot,
+            ["remote"],
+            cancellationToken);
+
+        var remoteNames = listResult.StandardOutput
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+        var remotes = new List<RemoteConfiguration>();
+
+        foreach (var remoteName in remoteNames)
+        {
+            var fetchUrlResult = await gitCommandRunner.RunCheckedAsync(
+                repositoryRoot,
+                ["remote", "get-url", remoteName],
+                cancellationToken);
+
+            var pushUrlResult = await gitCommandRunner.RunAsync(
+                repositoryRoot,
+                ["remote", "get-url", "--push", remoteName],
+                cancellationToken);
+
+            var fetchUrl = fetchUrlResult.StandardOutput.Trim();
+            var pushUrl = pushUrlResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(pushUrlResult.StandardOutput)
+                ? pushUrlResult.StandardOutput.Trim()
+                : fetchUrl;
+
+            remotes.Add(new RemoteConfiguration(remoteName, fetchUrl, pushUrl));
+        }
+
+        return remotes;
+    }
+
+    private async Task RestoreRemotesAsync(
+        string repositoryRoot,
+        IReadOnlyList<RemoteConfiguration> remotes,
+        CancellationToken cancellationToken)
+    {
+        foreach (var remote in remotes)
+        {
+            await gitCommandRunner.RunCheckedAsync(
+                repositoryRoot,
+                ["remote", "add", remote.Name, remote.FetchUrl],
+                cancellationToken);
+
+            if (!string.Equals(remote.FetchUrl, remote.PushUrl, StringComparison.Ordinal))
+            {
+                await gitCommandRunner.RunCheckedAsync(
+                    repositoryRoot,
+                    ["remote", "set-url", "--push", remote.Name, remote.PushUrl],
+                    cancellationToken);
+            }
+        }
+    }
+
+    private static bool ConfirmRewrite(
+        RepositoryScanResult analysis,
+        IReadOnlyList<RemoteConfiguration> remotes,
+        out bool restoreRemotesAfterRewrite)
+    {
+        WriteRewriteWarnings(analysis, remotes);
+        restoreRemotesAfterRewrite = remotes.Count > 0 && PromptToRestoreRemotes(remotes);
         Console.Write("Continue? [y/N]: ");
 
         var response = Console.ReadLine();
@@ -174,12 +246,50 @@ public sealed class RepositoryVacuumService(
             || string.Equals(response, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void WriteRewriteWarnings(RepositoryScanResult analysis)
+    private static void WriteRewriteWarnings(
+        RepositoryScanResult analysis,
+        IReadOnlyList<RemoteConfiguration> remotes)
     {
         Console.WriteLine("Warning: this will rewrite git history to remove files that were deleted and are no longer present on any live ref.");
         Console.WriteLine($"Repository: {analysis.RepositoryRoot}");
         Console.WriteLine($"Current branch: {analysis.CurrentBranch}");
         Console.WriteLine($"Paths to remove: {analysis.HistoricalOnlyPaths.Count}");
+
+        if (remotes.Count > 0)
+        {
+            Console.WriteLine($"Configured remotes: {string.Join(", ", remotes.Select(remote => remote.Name))}");
+            Console.WriteLine("Warning: git-filter-repo removes remotes such as 'origin' as a safety measure.");
+            Console.WriteLine("Reason: after a history rewrite, pushing or merging against the old remote state can reintroduce the old history and create a worse mess with duplicate commit graphs.");
+        }
+
         Console.WriteLine();
     }
+
+    private static bool PromptToRestoreRemotes(IReadOnlyList<RemoteConfiguration> remotes)
+    {
+        Console.Write("Re-add the saved remotes after the rewrite completes? [Y/n]: ");
+        var response = Console.ReadLine();
+
+        if (string.IsNullOrWhiteSpace(response))
+        {
+            return true;
+        }
+
+        return !string.Equals(response, "n", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(response, "no", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildRemoteRestoreSuffix(bool restoreRemotesAfterRewrite, int remoteCount)
+    {
+        if (remoteCount == 0)
+        {
+            return string.Empty;
+        }
+
+        return restoreRemotesAfterRewrite
+            ? ", and the saved remotes were restored"
+            : ", and remotes were left removed by git-filter-repo";
+    }
+
+    private sealed record RemoteConfiguration(string Name, string FetchUrl, string PushUrl);
 }
