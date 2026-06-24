@@ -21,13 +21,21 @@ dependency.
 
 ## Portable Build
 
-Publish a self-contained portable Windows build with:
+Publish a self-contained, single-file standalone build (no .NET install required on
+the target machine):
 
 ```powershell
-dotnet publish -c Release
+dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
 
-The output will be in `bin\Release\net8.0\win-x64\publish\` and can be copied to another Windows x64 machine without installing .NET. `appsettings.json` is included in that publish output.
+Use `-r linux-x64` to target Linux. The output goes to
+`bin\Release\net8.0\<rid>\publish\` and contains `RepoDetox.exe` (or `RepoDetox` on
+Linux) alongside `appsettings.json`.
+
+Tagged releases (`v*`) are built automatically by GitHub Actions
+([.github/workflows/build-release-packages.yml](.github/workflows/build-release-packages.yml)),
+which publishes standalone `win-x64` and `linux-x64` zips and attaches them to the
+GitHub release.
 
 ## Example
 

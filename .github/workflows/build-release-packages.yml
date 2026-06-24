@@ -1,0 +1,128 @@
+name: Build Release Packages
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  DOTNET_VERSION: 10.0.x
+
+jobs:
+  publish:
+    name: Publish ${{ matrix.runtime_id }} standalone
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime_id: [win-x64, linux-x64]
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_name="${GITHUB_REPOSITORY#*/}"
+          solution_file="$(find . -maxdepth 2 -name '*.sln' | sort | head -n 1)"
+          project_file="$(find . -path '*/bin/*' -prune -o -path '*/obj/*' -prune -o -name "${project_name}.csproj" -print | sort | head -n 1)"
+
+          if [[ -z "${solution_file}" || -z "${project_file}" ]]; then
+            echo "Could not resolve solution/project. solution='${solution_file}' project='${project_file}'" >&2
+            exit 1
+          fi
+
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            package_version="${GITHUB_REF_NAME}"
+          else
+            package_version="dev-${GITHUB_RUN_NUMBER}"
+          fi
+
+          echo "PROJECT_NAME=${project_name}" >> "$GITHUB_ENV"
+          echo "SOLUTION_FILE=${solution_file}" >> "$GITHUB_ENV"
+          echo "PROJECT_FILE=${project_file}" >> "$GITHUB_ENV"
+          echo "PACKAGE_VERSION=${package_version}" >> "$GITHUB_ENV"
+          echo "PACKAGE_BASENAME=${project_name}-${{ matrix.runtime_id }}-standalone" >> "$GITHUB_ENV"
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore "${{ env.PROJECT_FILE }}" -r ${{ matrix.runtime_id }}
+
+      - name: Publish standalone single file
+        run: >
+          dotnet publish "${{ env.PROJECT_FILE }}"
+          -c Release
+          -r ${{ matrix.runtime_id }}
+          --self-contained true
+          --no-restore
+          -o "publish/${{ matrix.runtime_id }}"
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=none
+          -p:DebugSymbols=false
+
+      - name: Package
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "publish/${{ matrix.runtime_id }}"
+          zip -r "../../${PACKAGE_BASENAME}-${PACKAGE_VERSION}.zip" .
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_BASENAME }}
+          path: ${{ env.PACKAGE_BASENAME }}-${{ env.PACKAGE_VERSION }}.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [publish]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: ${{ github.event.repository.name }}-*
+
+      - name: Show release assets
+        shell: bash
+        run: find release-assets -maxdepth 2 -type f | sort
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1 || \
+          gh release create "${GITHUB_REF_NAME}" --generate-notes
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-assets/*/*.zip)
+          if (( ${#assets[@]} == 0 )); then
+            echo "No release ZIP assets found." >&2
+            exit 1
+          fi
+          gh release upload "${GITHUB_REF_NAME}" "${assets[@]}" --clobber
