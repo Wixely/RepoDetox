@@ -14,3 +14,11 @@ public sealed record AnonymiseRequest(
 
 /// <summary>Request to collapse all history to a single root commit.</summary>
 public sealed record FlattenRequest(string RepositoryPath, bool SkipConfirmation);
+
+/// <summary>Request to replace literal secret strings throughout history.</summary>
+public sealed record ExpungeRequest(
+    string RepositoryPath,
+    bool SkipConfirmation,
+    IReadOnlyList<string> Secrets,
+    string Replacement,
+    bool IncludeMessages);

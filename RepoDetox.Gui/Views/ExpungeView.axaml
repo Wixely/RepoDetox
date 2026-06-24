@@ -1,0 +1,33 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RepoDetox.Gui.Views.ExpungeView">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Spacing="8">
+      <TextBlock Text="Expunge replaces literal secret strings everywhere they appear in history, so they no longer exist in the repository's git history."
+                 TextWrapping="Wrap" />
+      <TextBlock Text="Secrets to remove (one per line):" FontWeight="Bold" />
+    </StackPanel>
+
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="0,8,0,0">
+      <Grid ColumnDefinitions="Auto,*">
+        <TextBlock Grid.Column="0" Text="Replace with:" VerticalAlignment="Center" Width="90" />
+        <TextBox Grid.Column="1" Text="{Binding Replacement}" />
+      </Grid>
+      <CheckBox Content="Also replace inside commit and tag messages" IsChecked="{Binding IncludeMessages}" />
+      <TextBlock Text="Destructive: this rewrites commit hashes and updates your working files. You will be asked to confirm."
+                 Foreground="#B00020" TextWrapping="Wrap" />
+      <TextBlock Text="Secret values are never written to the output log. Remember to rotate/revoke the secret — it was already committed."
+                 Foreground="#808080" TextWrapping="Wrap" />
+      <Button Content="Expunge" Command="{Binding ExpungeCommand}" IsEnabled="{Binding CanRun}" HorizontalAlignment="Left" />
+    </StackPanel>
+
+    <Border BorderBrush="#80808080" BorderThickness="1">
+      <TextBox Text="{Binding SecretsText}"
+               AcceptsReturn="True"
+               TextWrapping="NoWrap"
+               FontFamily="Consolas,Menlo,monospace"
+               Watermark="Paste one secret per line..."
+               VerticalContentAlignment="Top" />
+    </Border>
+  </DockPanel>
+</UserControl>

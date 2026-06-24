@@ -19,6 +19,17 @@ public abstract class FastExportTransform
         Tagger,
     }
 
+    protected enum DataKind
+    {
+        Blob,
+        CommitMessage,
+        TagMessage,
+    }
+
+    // Payloads larger than this are streamed through unmodified even when RewritesData is true,
+    // to avoid buffering an enormous blob in memory.
+    private const long MaxRewritableDataLength = int.MaxValue;
+
     /// <summary>
     /// Drives the full transform. Returns <c>true</c> if the terminating <c>done</c>
     /// command was seen, which (with <c>--use-done-feature</c>) confirms the export was
@@ -74,6 +85,16 @@ public abstract class FastExportTransform
     /// <summary>Decides whether a file-change line (<c>M</c>/<c>D</c>/<c>C</c>/<c>R</c>) is kept. Default: kept.</summary>
     protected virtual bool ShouldKeepFileChange(byte[] line) => true;
 
+    /// <summary>
+    /// When <c>true</c>, every <c>data</c> payload (blob content, commit/tag message) is buffered
+    /// and passed to <see cref="TransformData"/> so its bytes can be rewritten. Default <c>false</c>
+    /// (payloads stream through untouched).
+    /// </summary>
+    protected virtual bool RewritesData => false;
+
+    /// <summary>Rewrites a buffered <c>data</c> payload. Default: returned unchanged.</summary>
+    protected virtual byte[] TransformData(byte[] data, DataKind kind) => data;
+
     private void ProcessBlob(byte[] blobLine, FastExportReader reader, FastImportWriter writer)
     {
         writer.WriteLine(blobLine);
@@ -88,7 +109,7 @@ public abstract class FastExportTransform
 
             if (StartsWith(line, "data "u8))
             {
-                PassThroughData(line, reader, writer);
+                EmitData(line, DataKind.Blob, reader, writer);
                 return;
             }
 
@@ -129,7 +150,7 @@ public abstract class FastExportTransform
             else if (StartsWith(line, "data "u8))
             {
                 reader.ReadRawLine();
-                PassThroughData(line, reader, writer);
+                EmitData(line, DataKind.CommitMessage, reader, writer);
             }
             else if (StartsWith(line, "M "u8))
             {
@@ -185,7 +206,7 @@ public abstract class FastExportTransform
 
         if (keep)
         {
-            PassThroughData(dataLine, reader, writer);
+            EmitData(dataLine, DataKind.Blob, reader, writer);
         }
         else
         {
@@ -220,7 +241,7 @@ public abstract class FastExportTransform
             else if (StartsWith(line, "data "u8))
             {
                 reader.ReadRawLine();
-                PassThroughData(line, reader, writer);
+                EmitData(line, DataKind.TagMessage, reader, writer);
             }
             else if (StartsWith(line, "mark "u8)
                   || StartsWith(line, "from "u8)
@@ -248,11 +269,25 @@ public abstract class FastExportTransform
         }
     }
 
-    private static void PassThroughData(byte[] dataLine, FastExportReader reader, FastImportWriter writer)
+    private void EmitData(byte[] dataLine, DataKind kind, FastExportReader reader, FastImportWriter writer)
     {
         var count = ParseDataCount(dataLine);
-        writer.WriteLine(dataLine);
-        writer.CopyDataFrom(reader, count);
+
+        if (!RewritesData || count > MaxRewritableDataLength)
+        {
+            // Stream the payload straight through without buffering.
+            writer.WriteLine(dataLine);
+            writer.CopyDataFrom(reader, count);
+            ConsumeOptionalTrailingNewline(reader, writer, emit: true);
+            return;
+        }
+
+        using var buffer = new MemoryStream((int)count);
+        reader.CopyExact(count, buffer);
+        var transformed = TransformData(buffer.ToArray(), kind);
+
+        writer.WriteLine($"data {transformed.Length}");
+        writer.WriteRaw(transformed);
         ConsumeOptionalTrailingNewline(reader, writer, emit: true);
     }
 

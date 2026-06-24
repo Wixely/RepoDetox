@@ -19,6 +19,7 @@ core engine. All history rewriting is performed in pure C# using git's built-in
 - `flatten`: rewrites the repository to a single root commit that matches the current HEAD state, removing all other refs and history.
 - `vacuum`: rewrites history to remove files that were deleted and are no longer present on any live ref, then expires reflogs and runs garbage collection.
 - `anonymise`: rewrites history to anonymise commit/tag usernames and emails without removing files.
+- `expunge`: rewrites history to replace literal secret strings everywhere they appear (file contents and, by default, commit/tag messages) — for scrubbing accidentally-committed secrets.
 - `preview`: starts a local browser view for the current analysis to support editor debugging. This is opt-in and requires `Preview:Enabled` to be set to `true` in `appsettings.json`.
 
 ## Prerequisites
@@ -96,6 +97,22 @@ dotnet run --project RepoDetox -- anonymise C:\path\to\repo --set-name "Anon" --
 `--set-name`/`--set-email` apply to authors, committers, and taggers. Passing either one targets only that side unless you also pass `--users`/`--emails`. Anonymising rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
 
 To delete all history and keep only the current repository state, use `flatten`. This creates a single new root commit and removes all other refs, so prior hashes and tags stop being valid.
+
+To scrub an accidentally-committed secret out of history, use `expunge`. It replaces each literal
+secret string with a token (default `***REMOVED***`) in every blob and, by default, in commit/tag
+messages, then updates your working tree to match:
+
+```powershell
+# Prefer a file (one secret per line) so the value isn't left in your shell history:
+dotnet run --project RepoDetox -- expunge C:\path\to\repo --secrets-file C:\path\to\secrets.txt
+
+# Or pass it inline (visible in shell history / process list):
+dotnet run --project RepoDetox -- expunge C:\path\to\repo --secret "AKIA...EXAMPLE"
+```
+
+Use `--replacement <text>` to change the token and `--contents-only` to leave messages untouched.
+**Important:** expunge only removes the secret from *this* repository's history — it was already
+committed and may exist in clones, forks, backups, or CI logs, so rotate/revoke the secret too.
 
 ## How history rewriting works
 

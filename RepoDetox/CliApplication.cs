@@ -10,6 +10,7 @@ public sealed class CliApplication(
     RepositoryAnonymiseService repositoryAnonymiseService,
     RepositoryVacuumService repositoryVacuumService,
     RepositoryFlattenService repositoryFlattenService,
+    RepositoryExpungeService repositoryExpungeService,
     PreviewServer previewServer,
     IOperationReporter reporter)
 {
@@ -22,7 +23,7 @@ public sealed class CliApplication(
             with.HelpWriter = null;
         });
 
-        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, AnonymiseOptions, FlattenOptions, PreviewOptions>(args);
+        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, AnonymiseOptions, FlattenOptions, ExpungeOptions, PreviewOptions>(args);
 
         try
         {
@@ -34,6 +35,7 @@ public sealed class CliApplication(
                     VacuumOptions options => await HandleVacuumAsync(options, cancellationToken),
                     AnonymiseOptions options => await HandleAnonymiseAsync(options, cancellationToken),
                     FlattenOptions options => await HandleFlattenAsync(options, cancellationToken),
+                    ExpungeOptions options => await HandleExpungeAsync(options, cancellationToken),
                     PreviewOptions options => await previewServer.RunAsync(options, cancellationToken),
                     _ => throw new InvalidOperationException("Unsupported command line verb.")
                 };
@@ -109,6 +111,45 @@ public sealed class CliApplication(
 
         var request = new FlattenRequest(options.RepositoryPath, options.Force);
         var result = await repositoryFlattenService.FlattenAsync(request, reporter, cancellationToken);
+        Console.WriteLine(result.Message);
+        return 0;
+    }
+
+    private async Task<int> HandleExpungeAsync(ExpungeOptions options, CancellationToken cancellationToken)
+    {
+        if (!options.HasExplicitRepositoryPath)
+        {
+            Console.Error.WriteLine("Error: expunge requires an explicit repository path. Pass --repo <path> or a positional path, even if it is just '.'.");
+            return 1;
+        }
+
+        var secrets = new List<string>(options.Secrets.Where(secret => !string.IsNullOrEmpty(secret)));
+
+        if (!string.IsNullOrWhiteSpace(options.SecretsFile))
+        {
+            if (!File.Exists(options.SecretsFile))
+            {
+                Console.Error.WriteLine($"Error: secrets file '{options.SecretsFile}' was not found.");
+                return 1;
+            }
+
+            secrets.AddRange((await File.ReadAllLinesAsync(options.SecretsFile, cancellationToken))
+                .Where(line => !string.IsNullOrEmpty(line)));
+        }
+
+        if (secrets.Count == 0)
+        {
+            Console.Error.WriteLine("Error: expunge requires at least one secret. Pass --secret <value> (repeatable) or --secrets-file <path>.");
+            return 1;
+        }
+
+        var request = new ExpungeRequest(
+            options.RepositoryPath,
+            options.Force,
+            secrets,
+            options.Replacement,
+            IncludeMessages: !options.ContentsOnly);
+        var result = await repositoryExpungeService.ExpungeAsync(request, reporter, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }

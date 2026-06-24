@@ -31,6 +31,7 @@ public sealed partial class MainViewModel : ObservableObject
         VacuumViewModel vacuum,
         AnonymiseViewModel anonymise,
         FlattenViewModel flatten,
+        ExpungeViewModel expunge,
         ILogger<MainViewModel> logger)
     {
         Session = session;
@@ -42,6 +43,7 @@ public sealed partial class MainViewModel : ObservableObject
         Vacuum = vacuum;
         Anonymise = anonymise;
         Flatten = flatten;
+        Expunge = expunge;
         _logger = logger;
     }
 
@@ -56,6 +58,8 @@ public sealed partial class MainViewModel : ObservableObject
     public AnonymiseViewModel Anonymise { get; }
 
     public FlattenViewModel Flatten { get; }
+
+    public ExpungeViewModel Expunge { get; }
 
     public string? RepositoryPath
     {

@@ -63,6 +63,7 @@ public partial class App : Application
         services.AddSingleton<RepositoryVacuumService>();
         services.AddSingleton<RepositoryAnonymiseService>();
         services.AddSingleton<RepositoryFlattenService>();
+        services.AddSingleton<RepositoryExpungeService>();
 
         // GUI services.
         services.AddSingleton<RepositorySession>();
@@ -75,6 +76,7 @@ public partial class App : Application
         services.AddSingleton<VacuumViewModel>();
         services.AddSingleton<AnonymiseViewModel>();
         services.AddSingleton<FlattenViewModel>();
+        services.AddSingleton<ExpungeViewModel>();
         services.AddTransient<RepoBrowserViewModel>();
         services.AddSingleton<MainViewModel>();
     }

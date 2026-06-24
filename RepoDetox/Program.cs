@@ -42,6 +42,7 @@ public static class Program
             builder.Services.AddSingleton<RepositoryAnonymiseService>();
             builder.Services.AddSingleton<RepositoryFlattenService>();
             builder.Services.AddSingleton<RepositoryVacuumService>();
+            builder.Services.AddSingleton<RepositoryExpungeService>();
 
             RegisterGlobalExceptionLogging();
 
