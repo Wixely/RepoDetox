@@ -63,6 +63,7 @@ public sealed class RepositoryDiscoveryService
         var done = false;
 
         var workerCount = Math.Max(2, Environment.ProcessorCount);
+        var prioritySet = GetPriorityPaths();
 
         void Enqueue(string directory, bool priority)
         {
@@ -108,7 +109,7 @@ public sealed class RepositoryDiscoveryService
 
                 try
                 {
-                    ProcessDirectory(directory, onFound, Enqueue, cancellationToken);
+                    ProcessDirectory(directory, onFound, Enqueue, prioritySet, cancellationToken);
                 }
                 catch
                 {
@@ -141,6 +142,7 @@ public sealed class RepositoryDiscoveryService
         string directory,
         IProgress<DiscoveredRepository> onFound,
         Action<string, bool> enqueue,
+        IReadOnlySet<string> prioritySet,
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -152,9 +154,15 @@ public sealed class RepositoryDiscoveryService
         {
             if (string.Equals(entry.Name, ".git", StringComparison.OrdinalIgnoreCase))
             {
-                // Repo marker (either a .git directory or a .git file). Prune: stop here.
-                gitLastWriteUtc = entry.LastWriteTimeUtc;
-                break;
+                // Only a genuine repository counts. A folder that merely contains a stray ".git"
+                // entry (or a folder simply named "git") is not reported; keep scanning siblings.
+                if (IsGitRepository(directory))
+                {
+                    gitLastWriteUtc = entry.LastWriteTimeUtc;
+                    break; // prune: do not descend into a repository
+                }
+
+                continue;
             }
 
             if ((entry.Attributes & FileAttributes.Directory) != 0 && !ExcludedNames.Contains(entry.Name))
@@ -166,15 +174,72 @@ public sealed class RepositoryDiscoveryService
         if (gitLastWriteUtc is not null)
         {
             onFound.Report(new DiscoveredRepository(directory, gitLastWriteUtc.Value));
-            return; // do not descend into a repository
+            return;
         }
 
         foreach (var child in childDirectories)
         {
             var name = Path.GetFileName(child);
-            var priority = PriorityNames.Contains(name, StringComparer.OrdinalIgnoreCase);
+            var priority = PriorityNames.Contains(name, StringComparer.OrdinalIgnoreCase)
+                || prioritySet.Contains(NormalizeRoot(child));
             enqueue(child, priority);
         }
+    }
+
+    /// <summary>
+    /// Returns true only when <paramref name="directory"/> is a real git repository — i.e. it
+    /// contains a <c>.git</c> directory with a <c>HEAD</c> and an <c>objects</c>/<c>refs</c> store,
+    /// or a <c>.git</c> file pointing elsewhere (worktree/submodule). A plain folder named "git"
+    /// or one with an empty/stray <c>.git</c> is rejected.
+    /// </summary>
+    public static bool IsGitRepository(string directory)
+    {
+        var gitPath = Path.Combine(directory, ".git");
+
+        if (Directory.Exists(gitPath))
+        {
+            return File.Exists(Path.Combine(gitPath, "HEAD"))
+                && (Directory.Exists(Path.Combine(gitPath, "objects"))
+                    || Directory.Exists(Path.Combine(gitPath, "refs")));
+        }
+
+        if (File.Exists(gitPath))
+        {
+            try
+            {
+                return File.ReadAllText(gitPath).TrimStart().StartsWith("gitdir:", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
+    private static HashSet<string> GetPriorityPaths()
+    {
+        var comparer = OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+        var set = new HashSet<string>(comparer);
+
+        foreach (var folder in new[] { Environment.SpecialFolder.UserProfile, Environment.SpecialFolder.MyDocuments })
+        {
+            try
+            {
+                var path = Environment.GetFolderPath(folder);
+                if (!string.IsNullOrEmpty(path))
+                {
+                    set.Add(NormalizeRoot(path));
+                }
+            }
+            catch
+            {
+                // Best effort: a missing special folder simply isn't prioritised.
+            }
+        }
+
+        return set;
     }
 
     public static IReadOnlyList<string> GetScanRoots()

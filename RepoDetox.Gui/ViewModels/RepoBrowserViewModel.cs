@@ -65,12 +65,16 @@ public sealed partial class RepoBrowserViewModel : ObservableObject
 
         foreach (var entry in _store.LoadCache())
         {
-            if (!_byPath.ContainsKey(entry.Path))
+            // Drop stale cache entries that are no longer real repositories (e.g. a folder
+            // simply named "git", or a repo that has since been removed).
+            if (_byPath.ContainsKey(entry.Path) || !RepositoryDiscoveryService.IsGitRepository(entry.Path))
             {
-                var repo = new DiscoveredRepository(entry.Path, entry.LastChangedUtc);
-                _byPath[entry.Path] = repo;
-                Repositories.Add(repo);
+                continue;
             }
+
+            var repo = new DiscoveredRepository(entry.Path, entry.LastChangedUtc);
+            _byPath[entry.Path] = repo;
+            Repositories.Add(repo);
         }
 
         StatusText = Repositories.Count > 0
