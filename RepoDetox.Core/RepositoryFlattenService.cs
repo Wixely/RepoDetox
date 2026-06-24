@@ -9,10 +9,11 @@ public sealed class RepositoryFlattenService(
     ILogger<RepositoryFlattenService> logger)
 {
     public async Task<FlattenResult> FlattenAsync(
-        FlattenOptions options,
+        FlattenRequest request,
+        IOperationReporter reporter,
         CancellationToken cancellationToken = default)
     {
-        var analysis = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
+        var analysis = await repositoryAnalyzer.AnalyzeAsync(request.RepositoryPath, cancellationToken);
 
         await EnsureRepositoryHasCommitsAsync(analysis.RepositoryRoot, cancellationToken);
         await EnsureRepositoryIsCleanAsync(analysis.RepositoryRoot, cancellationToken);
@@ -21,11 +22,10 @@ public sealed class RepositoryFlattenService(
         var currentTarget = currentBranchRef is null ? "detached HEAD" : analysis.CurrentBranch;
         var refsToDelete = await GetRefsToDeleteAsync(analysis.RepositoryRoot, currentBranchRef, cancellationToken);
 
-        if (options.Force)
-        {
-            WriteRewriteWarnings(analysis, currentTarget, refsToDelete.Count);
-        }
-        else if (!ConfirmRewrite(analysis, currentTarget, refsToDelete.Count))
+        WriteRewriteWarnings(reporter, analysis, currentTarget, refsToDelete.Count);
+
+        if (!request.SkipConfirmation
+            && !await reporter.ConfirmAsync("Continue with the flatten history rewrite?", cancellationToken))
         {
             logger.LogWarning("Flatten command was cancelled by the operator for {RepositoryRoot}.", analysis.RepositoryRoot);
             return new FlattenResult(false, "History flatten cancelled.");
@@ -251,30 +251,18 @@ public sealed class RepositoryFlattenService(
             cancellationToken);
     }
 
-    private static bool ConfirmRewrite(
-        RepositoryScanResult analysis,
-        string currentTarget,
-        int refsToDeleteCount)
-    {
-        WriteRewriteWarnings(analysis, currentTarget, refsToDeleteCount);
-        Console.Write("Continue? [y/N]: ");
-
-        var response = Console.ReadLine();
-        return string.Equals(response, "y", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(response, "yes", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static void WriteRewriteWarnings(
+        IOperationReporter reporter,
         RepositoryScanResult analysis,
         string currentTarget,
         int refsToDeleteCount)
     {
-        Console.WriteLine("Warning: flatten will replace repository history with a single root commit.");
-        Console.WriteLine($"Repository: {analysis.RepositoryRoot}");
-        Console.WriteLine($"Current target: {currentTarget}");
-        Console.WriteLine($"Other refs to delete: {refsToDeleteCount}");
-        Console.WriteLine("Warning: all prior commit hashes, branches, tags, and refs will become invalid, which can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
-        Console.WriteLine();
+        reporter.Report("Warning: flatten will replace repository history with a single root commit.");
+        reporter.Report($"Repository: {analysis.RepositoryRoot}");
+        reporter.Report($"Current target: {currentTarget}");
+        reporter.Report($"Other refs to delete: {refsToDeleteCount}");
+        reporter.Report("Warning: all prior commit hashes, branches, tags, and refs will become invalid, which can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
+        reporter.Report(string.Empty);
     }
 
     private sealed record HeadCommitContext(

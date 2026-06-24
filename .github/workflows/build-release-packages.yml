@@ -14,12 +14,16 @@ env:
 
 jobs:
   publish:
-    name: Publish ${{ matrix.runtime_id }} standalone
+    name: Publish ${{ matrix.pkg }} ${{ matrix.runtime }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        runtime_id: [win-x64, linux-x64]
+        include:
+          - { pkg: RepoDetox-cli, project: RepoDetox/RepoDetox.csproj,         runtime: win-x64,   binary: RepoDetox.exe }
+          - { pkg: RepoDetox-cli, project: RepoDetox/RepoDetox.csproj,         runtime: linux-x64, binary: RepoDetox }
+          - { pkg: RepoDetox-gui, project: RepoDetox.Gui/RepoDetox.Gui.csproj, runtime: win-x64,   binary: RepoDetox.Gui.exe }
+          - { pkg: RepoDetox-gui, project: RepoDetox.Gui/RepoDetox.Gui.csproj, runtime: linux-x64, binary: RepoDetox.Gui }
 
     steps:
       - name: Check out code
@@ -29,26 +33,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          project_name="${GITHUB_REPOSITORY#*/}"
-          solution_file="$(find . -maxdepth 2 -name '*.sln' | sort | head -n 1)"
-          project_file="$(find . -path '*/bin/*' -prune -o -path '*/obj/*' -prune -o -name "${project_name}.csproj" -print | sort | head -n 1)"
-
-          if [[ -z "${solution_file}" || -z "${project_file}" ]]; then
-            echo "Could not resolve solution/project. solution='${solution_file}' project='${project_file}'" >&2
-            exit 1
-          fi
-
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
             package_version="${GITHUB_REF_NAME}"
           else
             package_version="dev-${GITHUB_RUN_NUMBER}"
           fi
-
-          echo "PROJECT_NAME=${project_name}" >> "$GITHUB_ENV"
-          echo "SOLUTION_FILE=${solution_file}" >> "$GITHUB_ENV"
-          echo "PROJECT_FILE=${project_file}" >> "$GITHUB_ENV"
           echo "PACKAGE_VERSION=${package_version}" >> "$GITHUB_ENV"
-          echo "PACKAGE_BASENAME=${project_name}-${{ matrix.runtime_id }}-standalone" >> "$GITHUB_ENV"
+          echo "PACKAGE_BASENAME=${{ matrix.pkg }}-${{ matrix.runtime }}-standalone" >> "$GITHUB_ENV"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
@@ -56,16 +47,16 @@ jobs:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
       - name: Restore
-        run: dotnet restore "${{ env.PROJECT_FILE }}" -r ${{ matrix.runtime_id }}
+        run: dotnet restore "${{ matrix.project }}" -r ${{ matrix.runtime }}
 
       - name: Publish standalone single file
         run: >
-          dotnet publish "${{ env.PROJECT_FILE }}"
+          dotnet publish "${{ matrix.project }}"
           -c Release
-          -r ${{ matrix.runtime_id }}
+          -r ${{ matrix.runtime }}
           --self-contained true
           --no-restore
-          -o "publish/${{ matrix.runtime_id }}"
+          -o "publish/${{ matrix.runtime }}"
           -p:PublishSingleFile=true
           -p:EnableCompressionInSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
@@ -76,7 +67,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "publish/${{ matrix.runtime_id }}"
+          cd "publish/${{ matrix.runtime }}"
+          if [[ "${{ matrix.runtime }}" == linux-* ]]; then
+            chmod +x "${{ matrix.binary }}"
+          fi
           zip -r "../../${PACKAGE_BASENAME}-${PACKAGE_VERSION}.zip" .
 
       - name: Upload workflow artifact
@@ -100,7 +94,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          pattern: ${{ github.event.repository.name }}-*
+          pattern: RepoDetox-*
 
       - name: Show release assets
         shell: bash

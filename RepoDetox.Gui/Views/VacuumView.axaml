@@ -1,0 +1,25 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RepoDetox.Gui.Views.VacuumView">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Spacing="8">
+      <TextBlock Text="Vacuum rewrites history to remove files that were deleted and are no longer present on any live ref, then garbage-collects to reclaim space."
+                 TextWrapping="Wrap" />
+      <TextBlock Text="Destructive: this rewrites commit hashes. You will be asked to confirm."
+                 Foreground="#B00020" TextWrapping="Wrap" />
+      <Button Content="Vacuum" Command="{Binding VacuumCommand}" IsEnabled="{Binding CanRun}" HorizontalAlignment="Left" />
+      <TextBlock Text="Removable paths (from the latest Analyze):" FontWeight="Bold" Margin="0,8,0,0" />
+    </StackPanel>
+    <Border BorderBrush="#80808080" BorderThickness="1" Margin="0,4,0,0">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding Session.LastScan.HistoricalOnlyPaths}" Margin="4">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding}" FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</UserControl>

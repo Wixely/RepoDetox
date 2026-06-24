@@ -20,21 +20,7 @@ public sealed class AnonymiseOptions : RepositoryOptions
     [Option("set-email", HelpText = "Replace every email with this exact value instead of a per-identity hash.")]
     public string? SetEmail { get; set; }
 
-    private bool AnyTarget => Users || Emails || SetName is not null || SetEmail is not null;
+    public IdentityRewriteMode NameMode => IdentityRewritePlan.Resolve(Users, Emails, SetName, SetEmail).NameMode;
 
-    /// <summary>True when the username side should be rewritten (defaults to both sides when nothing is targeted).</summary>
-    public bool TargetsUsers => !AnyTarget || Users || SetName is not null;
-
-    /// <summary>True when the email side should be rewritten (defaults to both sides when nothing is targeted).</summary>
-    public bool TargetsEmails => !AnyTarget || Emails || SetEmail is not null;
-
-    public IdentityRewriteMode NameMode =>
-        SetName is not null ? IdentityRewriteMode.Fixed
-        : TargetsUsers ? IdentityRewriteMode.Hash
-        : IdentityRewriteMode.Keep;
-
-    public IdentityRewriteMode EmailMode =>
-        SetEmail is not null ? IdentityRewriteMode.Fixed
-        : TargetsEmails ? IdentityRewriteMode.Hash
-        : IdentityRewriteMode.Keep;
+    public IdentityRewriteMode EmailMode => IdentityRewritePlan.Resolve(Users, Emails, SetName, SetEmail).EmailMode;
 }

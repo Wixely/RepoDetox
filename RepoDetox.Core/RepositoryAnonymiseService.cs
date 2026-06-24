@@ -8,22 +8,20 @@ public sealed class RepositoryAnonymiseService(
     ILogger<RepositoryAnonymiseService> logger)
 {
     public async Task<VacuumResult> AnonymiseAsync(
-        AnonymiseOptions options,
+        AnonymiseRequest request,
+        IOperationReporter reporter,
         CancellationToken cancellationToken = default)
     {
-        var repositoryRoot = await ResolveRepositoryRootAsync(options.RepositoryPath, cancellationToken);
+        var repositoryRoot = await ResolveRepositoryRootAsync(request.RepositoryPath, cancellationToken);
         var currentBranch = await GetCurrentBranchAsync(repositoryRoot, cancellationToken);
-        var nameMode = options.NameMode;
-        var emailMode = options.EmailMode;
-        var description = DescribeTargets(nameMode, options.SetName, emailMode, options.SetEmail);
+        var description = DescribeTargets(request.NameMode, request.FixedName, request.EmailMode, request.FixedEmail);
 
         await EnsureRepositoryIsCleanAsync(repositoryRoot, cancellationToken);
 
-        if (options.Force)
-        {
-            WriteRewriteWarnings(repositoryRoot, currentBranch, description);
-        }
-        else if (!ConfirmRewrite(repositoryRoot, currentBranch, description))
+        WriteRewriteWarnings(reporter, repositoryRoot, currentBranch, description);
+
+        if (!request.SkipConfirmation
+            && !await reporter.ConfirmAsync("Continue with the anonymise history rewrite?", cancellationToken))
         {
             logger.LogWarning("Anonymise command was cancelled by the operator for {RepositoryRoot}.", repositoryRoot);
             return new VacuumResult(false, "History rewrite cancelled.");
@@ -34,15 +32,19 @@ public sealed class RepositoryAnonymiseService(
             repositoryRoot,
             description);
 
-        Console.WriteLine("Starting history rewrite...");
+        reporter.Report("Starting history rewrite...");
 
-        var transform = new AnonymiseFastExportTransform(nameMode, emailMode, options.SetName, options.SetEmail);
+        var transform = new AnonymiseFastExportTransform(
+            request.NameMode,
+            request.EmailMode,
+            request.FixedName,
+            request.FixedEmail);
         await fastExportImportPipeline.RunAsync(repositoryRoot, transform, cancellationToken);
 
-        Console.WriteLine("Expiring reflogs...");
+        reporter.Report("Expiring reflogs...");
         await gitCommandRunner.RunCheckedAsync(repositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
 
-        Console.WriteLine("Running git gc...");
+        reporter.Report("Running git gc...");
         await gitCommandRunner.RunCheckedAsync(repositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
         var message =
@@ -112,30 +114,18 @@ public sealed class RepositoryAnonymiseService(
         return result.StandardOutput.Trim();
     }
 
-    private static bool ConfirmRewrite(
-        string repositoryRoot,
-        string currentBranch,
-        string description)
-    {
-        WriteRewriteWarnings(repositoryRoot, currentBranch, description);
-        Console.Write("Continue? [y/N]: ");
-
-        var response = Console.ReadLine();
-        return string.Equals(response, "y", StringComparison.OrdinalIgnoreCase)
-            || string.Equals(response, "yes", StringComparison.OrdinalIgnoreCase);
-    }
-
     private static void WriteRewriteWarnings(
+        IOperationReporter reporter,
         string repositoryRoot,
         string currentBranch,
         string description)
     {
-        Console.WriteLine("Warning: this will rewrite git history to change commit and tag metadata.");
-        Console.WriteLine($"Repository: {repositoryRoot}");
-        Console.WriteLine($"Current branch: {currentBranch}");
-        Console.WriteLine($"Rewrite: {description}");
-        Console.WriteLine("Warning: changing identities rewrites commit hashes and can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
-        Console.WriteLine();
+        reporter.Report("Warning: this will rewrite git history to change commit and tag metadata.");
+        reporter.Report($"Repository: {repositoryRoot}");
+        reporter.Report($"Current branch: {currentBranch}");
+        reporter.Report($"Rewrite: {description}");
+        reporter.Report("Warning: changing identities rewrites commit hashes and can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
+        reporter.Report(string.Empty);
     }
 
     private static string DescribeTargets(

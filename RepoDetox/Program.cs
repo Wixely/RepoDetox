@@ -34,6 +34,7 @@ public static class Program
             builder.Logging.ClearProviders();
             builder.Services.AddSerilog(Log.Logger, dispose: false);
             builder.Services.AddSingleton<CliApplication>();
+            builder.Services.AddSingleton<IOperationReporter, ConsoleOperationReporter>();
             builder.Services.AddSingleton<GitCommandRunner>();
             builder.Services.AddSingleton<FastExportImportPipeline>();
             builder.Services.AddSingleton<PreviewServer>();

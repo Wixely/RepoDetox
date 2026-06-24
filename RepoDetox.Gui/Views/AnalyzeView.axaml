@@ -1,0 +1,26 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RepoDetox.Gui.Views.AnalyzeView">
+  <DockPanel Margin="12">
+    <StackPanel DockPanel.Dock="Top" Spacing="8">
+      <TextBlock Text="Scan the repository for files that were deleted from history but are still stored in the object database."
+                 TextWrapping="Wrap" />
+      <StackPanel Orientation="Horizontal" Spacing="12">
+        <Button Content="Analyze" Command="{Binding AnalyzeCommand}" IsEnabled="{Binding CanRun}" />
+        <TextBlock Text="{Binding Summary}" VerticalAlignment="Center" TextWrapping="Wrap" />
+      </StackPanel>
+      <TextBlock Text="Removable paths (deleted and absent from every live ref):" FontWeight="Bold" Margin="0,8,0,0" />
+    </StackPanel>
+    <Border BorderBrush="#80808080" BorderThickness="1" Margin="0,4,0,0">
+      <ScrollViewer>
+        <ItemsControl ItemsSource="{Binding RemovablePaths}" Margin="4">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding}" FontFamily="Consolas,Menlo,monospace" FontSize="12" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </ScrollViewer>
+    </Border>
+  </DockPanel>
+</UserControl>

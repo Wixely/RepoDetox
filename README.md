@@ -1,8 +1,19 @@
 # RepoDetox
 
-Placeholder repository for a .NET 8 command-line tool that inspects a git repository, lists files that were deleted from history and are no longer present on any live ref, and can vacuum those paths out of history.
+A .NET 8 toolkit for cleaning and anonymising git repositories by rewriting history. It
+ships as both a **command-line tool** and a cross-platform **desktop GUI**, sharing one
+core engine. All history rewriting is performed in pure C# using git's built-in
+`git fast-export` / `git fast-import` — no Python or `git-filter-repo` dependency.
 
-## Current Commands
+## Projects
+
+| Project | Output | Description |
+| --- | --- | --- |
+| `RepoDetox.Core` | library | Engine: analysis + history-rewrite services, console-free |
+| `RepoDetox` | CLI exe | Command-line front-end (`list`/`vacuum`/`anonymise`/`flatten`/`preview`) |
+| `RepoDetox.Gui` | desktop exe | Avalonia GUI with a tab per feature |
+
+## Commands
 
 - `list`: shows files that were deleted in history and are no longer present on any live ref.
 - `flatten`: rewrites the repository to a single root commit that matches the current HEAD state, removing all other refs and history.
@@ -14,40 +25,51 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 
 - .NET 8 SDK or newer to build/publish
 - Git on `PATH`
+- For the GUI on **Linux**: a desktop with X11 and fontconfig present
+  (`libx11`, `libfontconfig1`); these system libraries are not bundled.
 
-All history rewriting is performed in pure C# using git's built-in
-`git fast-export` and `git fast-import`. There is no Python or `git-filter-repo`
-dependency.
+## Desktop GUI
+
+Pick a repository once at the top of the window, then switch between the **Analyze**,
+**Vacuum**, **Anonymise**, and **Flatten** tabs to run any operation on it. Destructive
+operations ask for confirmation, progress streams to a shared output log, and a Cancel
+button aborts a running operation. Run it during development with:
+
+```powershell
+dotnet run --project RepoDetox.Gui
+```
 
 ## Portable Build
 
 Publish a self-contained, single-file standalone build (no .NET install required on
-the target machine):
+the target machine). Choose the CLI or the GUI project:
 
 ```powershell
-dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+# CLI
+dotnet publish RepoDetox\RepoDetox.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+# GUI
+dotnet publish RepoDetox.Gui\RepoDetox.Gui.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
-Use `-r linux-x64` to target Linux. The output goes to
-`bin\Release\net8.0\<rid>\publish\` and contains `RepoDetox.exe` (or `RepoDetox` on
-Linux) alongside `appsettings.json`.
+Use `-r linux-x64` to target Linux. Output goes to `<project>\bin\Release\net8.0\<rid>\publish\`.
 
 Tagged releases (`v*`) are built automatically by GitHub Actions
 ([.github/workflows/build-release-packages.yml](.github/workflows/build-release-packages.yml)),
-which publishes standalone `win-x64` and `linux-x64` zips and attaches them to the
-GitHub release.
+which publishes standalone CLI and GUI zips for `win-x64` and `linux-x64` and attaches them
+to the GitHub release.
 
-## Example
+## CLI usage
 
 ```powershell
-dotnet run -- list --repo C:\path\to\repo
+dotnet run --project RepoDetox -- list --repo C:\path\to\repo
 ```
 
 ```powershell
-dotnet run -- list C:\path\to\repo
+dotnet run --project RepoDetox -- list C:\path\to\repo
 ```
 
-Run `dotnet run` with no arguments to see the CLI help.
+Run `dotnet run --project RepoDetox` with no arguments to see the CLI help.
 
 You can pass the repository either as a positional argument like `list C:\path\to\repo` or with `--repo C:\path\to\repo`.
 
@@ -57,13 +79,13 @@ To instead set an exact value for everyone, pass `--set-name` and/or `--set-emai
 
 ```powershell
 # Collapse every contributor to a single identity
-dotnet run -- anonymise C:\path\to\repo --set-name "Anon" --set-email "anon@example.invalid"
+dotnet run --project RepoDetox -- anonymise C:\path\to\repo --set-name "Anon" --set-email "anon@example.invalid"
 
 # Set a fixed name but leave emails untouched
-dotnet run -- anonymise C:\path\to\repo --set-name "Anon"
+dotnet run --project RepoDetox -- anonymise C:\path\to\repo --set-name "Anon"
 
 # Fixed name, hashed email
-dotnet run -- anonymise C:\path\to\repo --set-name "Anon" --emails
+dotnet run --project RepoDetox -- anonymise C:\path\to\repo --set-name "Anon" --emails
 ```
 
 `--set-name`/`--set-email` apply to authors, committers, and taggers. Passing either one targets only that side unless you also pass `--users`/`--emails`. Anonymising rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.

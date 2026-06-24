@@ -14,14 +14,33 @@ git commands, not their source code.
 RepoDetox depends on the following NuGet packages at build/run time. All are
 permissive and compatible with MIT distribution.
 
+### Shared / CLI (`RepoDetox.Core`, `RepoDetox`)
+
 | Package | Version | License |
 | --- | --- | --- |
 | CommandLineParser | 2.9.1 | MIT |
-| Microsoft.Extensions.Hosting (and related Microsoft.Extensions.* packages) | 10.0.x | MIT |
+| Microsoft.Extensions.Hosting / Logging (and related Microsoft.Extensions.* packages) | 10.0.x | MIT |
 | Serilog.Extensions.Hosting | 10.0.0 | Apache-2.0 |
 | Serilog.Settings.Configuration | 10.0.0 | Apache-2.0 |
 | Serilog.Sinks.Console | 6.1.1 | Apache-2.0 |
 | Serilog.Sinks.File | 7.0.0 | Apache-2.0 |
+
+### Desktop GUI (`RepoDetox.Gui`)
+
+| Package | Version | License |
+| --- | --- | --- |
+| Avalonia (+ Avalonia.Desktop / Themes.Fluent / Fonts.Inter / Diagnostics) | 11.2.3 | MIT |
+| CommunityToolkit.Mvvm | 8.4.0 | MIT |
+| Microsoft.Extensions.DependencyInjection / Logging | 10.0.x | MIT |
+| Serilog | 4.2.0 | Apache-2.0 |
+| Serilog.Extensions.Logging | 9.0.1 | Apache-2.0 |
+| Serilog.Sinks.File | 7.0.0 | Apache-2.0 |
+
+Avalonia transitively includes SkiaSharp and HarfBuzzSharp (both MIT) which wrap the
+native Skia (BSD-3-Clause, © Google) and HarfBuzz (MIT-style "Old MIT") libraries — all
+permissive and compatible with MIT distribution. `Avalonia.Fonts.Inter` embeds the **Inter**
+typeface under the **SIL Open Font License 1.1** (© The Inter Project Authors); the font
+remains under the OFL, which permits bundling and redistribution within an MIT-licensed app.
 
 ## Apache License 2.0 attribution (Serilog)
 

@@ -10,7 +10,8 @@ public sealed class CliApplication(
     RepositoryAnonymiseService repositoryAnonymiseService,
     RepositoryVacuumService repositoryVacuumService,
     RepositoryFlattenService repositoryFlattenService,
-    PreviewServer previewServer)
+    PreviewServer previewServer,
+    IOperationReporter reporter)
 {
     public async Task<int> RunAsync(string[] args, CancellationToken cancellationToken = default)
     {
@@ -72,7 +73,8 @@ public sealed class CliApplication(
             return 1;
         }
 
-        var result = await repositoryVacuumService.VacuumAsync(options, cancellationToken);
+        var request = new VacuumRequest(options.RepositoryPath, options.Force);
+        var result = await repositoryVacuumService.VacuumAsync(request, reporter, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }
@@ -85,7 +87,14 @@ public sealed class CliApplication(
             return 1;
         }
 
-        var result = await repositoryAnonymiseService.AnonymiseAsync(options, cancellationToken);
+        var request = new AnonymiseRequest(
+            options.RepositoryPath,
+            options.Force,
+            options.NameMode,
+            options.EmailMode,
+            options.SetName,
+            options.SetEmail);
+        var result = await repositoryAnonymiseService.AnonymiseAsync(request, reporter, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }
@@ -98,7 +107,8 @@ public sealed class CliApplication(
             return 1;
         }
 
-        var result = await repositoryFlattenService.FlattenAsync(options, cancellationToken);
+        var request = new FlattenRequest(options.RepositoryPath, options.Force);
+        var result = await repositoryFlattenService.FlattenAsync(request, reporter, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
     }

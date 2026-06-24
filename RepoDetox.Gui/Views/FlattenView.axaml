@@ -1,0 +1,11 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="RepoDetox.Gui.Views.FlattenView">
+  <StackPanel Margin="12" Spacing="10">
+    <TextBlock Text="Flatten collapses ALL history into a single root commit that matches the current HEAD state, and deletes every other branch, tag, and ref."
+               TextWrapping="Wrap" FontWeight="Bold" />
+    <TextBlock Text="All prior commit hashes, branches, and tags become invalid. This cannot be undone."
+               Foreground="#B00020" TextWrapping="Wrap" />
+    <Button Content="Flatten" Command="{Binding FlattenCommand}" IsEnabled="{Binding CanRun}" HorizontalAlignment="Left" />
+  </StackPanel>
+</UserControl>

@@ -7,12 +7,23 @@
       "command": "dotnet",
       "args": [
         "build",
-        "${workspaceFolder}/RepoDetox.sln"
+        "${workspaceFolder}/RepoDetox.slnx"
       ],
       "group": {
         "kind": "build",
         "isDefault": true
       },
+      "problemMatcher": "$msCompile"
+    },
+    {
+      "label": "run:gui",
+      "type": "process",
+      "command": "dotnet",
+      "args": [
+        "run",
+        "--project",
+        "${workspaceFolder}/RepoDetox.Gui/RepoDetox.Gui.csproj"
+      ],
       "problemMatcher": "$msCompile"
     },
     {
@@ -22,7 +33,7 @@
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}/RepoDetox.csproj",
+        "${workspaceFolder}/RepoDetox/RepoDetox.csproj",
         "--",
         "list",
         "--repo",
@@ -37,7 +48,7 @@
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}/RepoDetox.csproj",
+        "${workspaceFolder}/RepoDetox/RepoDetox.csproj",
         "--",
         "preview",
         "--repo",
@@ -57,7 +68,7 @@
       "args": [
         "run",
         "--project",
-        "${workspaceFolder}/RepoDetox.csproj",
+        "${workspaceFolder}/RepoDetox/RepoDetox.csproj",
         "--",
         "anonymise",
         "--repo",
