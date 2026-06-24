@@ -13,30 +13,30 @@ public sealed class RepositoryAnonymiseService(
     {
         var repositoryRoot = await ResolveRepositoryRootAsync(options.RepositoryPath, cancellationToken);
         var currentBranch = await GetCurrentBranchAsync(repositoryRoot, cancellationToken);
-        var shouldAnonymiseUsers = options.ShouldAnonymiseUsers;
-        var shouldAnonymiseEmails = options.ShouldAnonymiseEmails;
+        var nameMode = options.NameMode;
+        var emailMode = options.EmailMode;
+        var description = DescribeTargets(nameMode, options.SetName, emailMode, options.SetEmail);
 
         await EnsureRepositoryIsCleanAsync(repositoryRoot, cancellationToken);
 
         if (options.Force)
         {
-            WriteRewriteWarnings(repositoryRoot, currentBranch, shouldAnonymiseUsers, shouldAnonymiseEmails);
+            WriteRewriteWarnings(repositoryRoot, currentBranch, description);
         }
-        else if (!ConfirmRewrite(repositoryRoot, currentBranch, shouldAnonymiseUsers, shouldAnonymiseEmails))
+        else if (!ConfirmRewrite(repositoryRoot, currentBranch, description))
         {
             logger.LogWarning("Anonymise command was cancelled by the operator for {RepositoryRoot}.", repositoryRoot);
             return new VacuumResult(false, "History rewrite cancelled.");
         }
 
         logger.LogWarning(
-            "Rewriting history for {RepositoryRoot}. AnonymiseUsers={AnonymiseUsers}. AnonymiseEmails={AnonymiseEmails}.",
+            "Rewriting history for {RepositoryRoot}. Rewriting {Targets}.",
             repositoryRoot,
-            shouldAnonymiseUsers,
-            shouldAnonymiseEmails);
+            description);
 
         Console.WriteLine("Starting history rewrite...");
 
-        var transform = new AnonymiseFastExportTransform(shouldAnonymiseUsers, shouldAnonymiseEmails);
+        var transform = new AnonymiseFastExportTransform(nameMode, emailMode, options.SetName, options.SetEmail);
         await fastExportImportPipeline.RunAsync(repositoryRoot, transform, cancellationToken);
 
         Console.WriteLine("Expiring reflogs...");
@@ -46,7 +46,7 @@ public sealed class RepositoryAnonymiseService(
         await gitCommandRunner.RunCheckedAsync(repositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
         var message =
-            $"Completed history rewrite in {repositoryRoot}: anonymised {DescribeAnonymisationTargets(shouldAnonymiseUsers, shouldAnonymiseEmails)}. " +
+            $"Completed history rewrite in {repositoryRoot}: rewrote {description}. " +
             "The repository was then compacted.";
 
         logger.LogInformation(message);
@@ -115,10 +115,9 @@ public sealed class RepositoryAnonymiseService(
     private static bool ConfirmRewrite(
         string repositoryRoot,
         string currentBranch,
-        bool anonymiseUsers,
-        bool anonymiseEmails)
+        string description)
     {
-        WriteRewriteWarnings(repositoryRoot, currentBranch, anonymiseUsers, anonymiseEmails);
+        WriteRewriteWarnings(repositoryRoot, currentBranch, description);
         Console.Write("Continue? [y/N]: ");
 
         var response = Console.ReadLine();
@@ -129,21 +128,42 @@ public sealed class RepositoryAnonymiseService(
     private static void WriteRewriteWarnings(
         string repositoryRoot,
         string currentBranch,
-        bool anonymiseUsers,
-        bool anonymiseEmails)
+        string description)
     {
-        Console.WriteLine("Warning: this will rewrite git history to anonymise commit and tag metadata.");
+        Console.WriteLine("Warning: this will rewrite git history to change commit and tag metadata.");
         Console.WriteLine($"Repository: {repositoryRoot}");
         Console.WriteLine($"Current branch: {currentBranch}");
-        Console.WriteLine($"Anonymise: {DescribeAnonymisationTargets(anonymiseUsers, anonymiseEmails)}");
-        Console.WriteLine("Warning: anonymising identities changes commit hashes and can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
+        Console.WriteLine($"Rewrite: {description}");
+        Console.WriteLine("Warning: changing identities rewrites commit hashes and can affect clones, forks, pull requests, signed objects, and tooling that references existing hashes.");
         Console.WriteLine();
     }
 
-    private static string DescribeAnonymisationTargets(bool anonymiseUsers, bool anonymiseEmails) =>
-        anonymiseUsers && anonymiseEmails
-            ? "usernames and emails"
-            : anonymiseUsers
-                ? "usernames"
-                : "emails";
+    private static string DescribeTargets(
+        IdentityRewriteMode nameMode,
+        string? fixedName,
+        IdentityRewriteMode emailMode,
+        string? fixedEmail)
+    {
+        var parts = new List<string>();
+
+        if (nameMode == IdentityRewriteMode.Hash)
+        {
+            parts.Add("usernames (anonymised)");
+        }
+        else if (nameMode == IdentityRewriteMode.Fixed)
+        {
+            parts.Add($"usernames (set to '{fixedName}')");
+        }
+
+        if (emailMode == IdentityRewriteMode.Hash)
+        {
+            parts.Add("emails (anonymised)");
+        }
+        else if (emailMode == IdentityRewriteMode.Fixed)
+        {
+            parts.Add($"emails (set to '{fixedEmail}')");
+        }
+
+        return parts.Count == 0 ? "nothing" : string.Join(" and ", parts);
+    }
 }

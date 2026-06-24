@@ -51,7 +51,22 @@ Run `dotnet run` with no arguments to see the CLI help.
 
 You can pass the repository either as a positional argument like `list C:\path\to\repo` or with `--repo C:\path\to\repo`.
 
-To anonymise commit metadata without removing files, use `anonymise`. By default it rewrites both usernames and emails; use `--users` or `--emails` to target one side only. This rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
+To anonymise commit metadata without removing files, use `anonymise`. By default it rewrites both usernames and emails; use `--users` or `--emails` to target one side only. Each original identity is replaced with a deterministic per-identity hash (e.g. `anonymous-user-xxxxxxxxxxxx`).
+
+To instead set an exact value for everyone, pass `--set-name` and/or `--set-email`:
+
+```powershell
+# Collapse every contributor to a single identity
+dotnet run -- anonymise C:\path\to\repo --set-name "Anon" --set-email "anon@example.invalid"
+
+# Set a fixed name but leave emails untouched
+dotnet run -- anonymise C:\path\to\repo --set-name "Anon"
+
+# Fixed name, hashed email
+dotnet run -- anonymise C:\path\to\repo --set-name "Anon" --emails
+```
+
+`--set-name`/`--set-email` apply to authors, committers, and taggers. Passing either one targets only that side unless you also pass `--users`/`--emails`. Anonymising rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
 
 To delete all history and keep only the current repository state, use `flatten`. This creates a single new root commit and removes all other refs, so prior hashes and tags stop being valid.
 

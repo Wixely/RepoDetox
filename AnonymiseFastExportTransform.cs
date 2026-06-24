@@ -3,23 +3,63 @@ using System.Text;
 
 namespace RepoDetox;
 
+/// <summary>How an identity field (name or email) is rewritten.</summary>
+public enum IdentityRewriteMode
+{
+    /// <summary>Leave the original value untouched.</summary>
+    Keep,
+
+    /// <summary>Replace with a deterministic per-identity hash.</summary>
+    Hash,
+
+    /// <summary>Replace every value with one caller-supplied literal.</summary>
+    Fixed,
+}
+
 /// <summary>
 /// Rewrites the name and/or email in every <c>author</c>, <c>committer</c>, and
-/// <c>tagger</c> line so commit/tag identities are anonymised. The hashing reproduces the
-/// previous git-filter-repo callbacks byte-for-byte:
+/// <c>tagger</c> line. Each side can be kept, replaced with a deterministic hash, or
+/// replaced with a fixed literal value. The hashing reproduces the previous
+/// git-filter-repo callbacks byte-for-byte:
 /// <list type="bullet">
 /// <item><c>anonymous-user-</c> + first 12 lowercase hex chars of SHA-256(name bytes)</item>
 /// <item><c>anonymous-email-</c> + first 12 lowercase hex chars of SHA-256(email bytes) + <c>@example.invalid</c></item>
 /// </list>
 /// </summary>
-public sealed class AnonymiseFastExportTransform(bool anonymiseUsers, bool anonymiseEmails) : FastExportTransform
+public sealed class AnonymiseFastExportTransform : FastExportTransform
 {
     private static readonly byte[] UserPrefix = "anonymous-user-"u8.ToArray();
     private static readonly byte[] EmailPrefix = "anonymous-email-"u8.ToArray();
     private static readonly byte[] EmailSuffix = "@example.invalid"u8.ToArray();
 
+    private readonly IdentityRewriteMode _nameMode;
+    private readonly IdentityRewriteMode _emailMode;
+    private readonly byte[]? _fixedName;
+    private readonly byte[]? _fixedEmail;
+
+    public AnonymiseFastExportTransform(
+        IdentityRewriteMode nameMode,
+        IdentityRewriteMode emailMode,
+        string? fixedName = null,
+        string? fixedEmail = null)
+    {
+        _nameMode = nameMode;
+        _emailMode = emailMode;
+        _fixedName = nameMode == IdentityRewriteMode.Fixed
+            ? Encoding.UTF8.GetBytes(fixedName ?? throw new ArgumentNullException(nameof(fixedName)))
+            : null;
+        _fixedEmail = emailMode == IdentityRewriteMode.Fixed
+            ? Encoding.UTF8.GetBytes(fixedEmail ?? throw new ArgumentNullException(nameof(fixedEmail)))
+            : null;
+    }
+
     protected override byte[] TransformIdentity(byte[] line, IdentityKind kind)
     {
+        if (_nameMode == IdentityRewriteMode.Keep && _emailMode == IdentityRewriteMode.Keep)
+        {
+            return line;
+        }
+
         var valueStart = IndexOf(line, (byte)' ', 0);
         if (valueStart < 0)
         {
@@ -55,38 +95,52 @@ public sealed class AnonymiseFastExportTransform(bool anonymiseUsers, bool anony
 
         using var output = new MemoryStream(line.Length + 32);
         output.Write(line, 0, valueStart); // keyword + ' '
-        WriteBytes(output, anonymiseUsers ? AnonymiseName(name) : name);
+        WriteBytes(output, RewriteName(name));
         WriteBytes(output, middle);
-        WriteBytes(output, anonymiseEmails ? AnonymiseEmail(email) : email);
+        WriteBytes(output, RewriteEmail(email));
         WriteBytes(output, suffix);
 
         return output.ToArray();
     }
 
-    private static byte[] AnonymiseName(byte[] name)
+    private byte[] RewriteName(byte[] name) => _nameMode switch
     {
-        var hash = ShortHashAscii(name);
-        var result = new byte[UserPrefix.Length + hash.Length];
-        Buffer.BlockCopy(UserPrefix, 0, result, 0, UserPrefix.Length);
-        Buffer.BlockCopy(hash, 0, result, UserPrefix.Length, hash.Length);
-        return result;
-    }
+        IdentityRewriteMode.Hash => Concat(UserPrefix, ShortHashAscii(name)),
+        IdentityRewriteMode.Fixed => _fixedName!,
+        _ => name,
+    };
 
-    private static byte[] AnonymiseEmail(byte[] email)
+    private byte[] RewriteEmail(byte[] email) => _emailMode switch
     {
-        var hash = ShortHashAscii(email);
-        var result = new byte[EmailPrefix.Length + hash.Length + EmailSuffix.Length];
-        Buffer.BlockCopy(EmailPrefix, 0, result, 0, EmailPrefix.Length);
-        Buffer.BlockCopy(hash, 0, result, EmailPrefix.Length, hash.Length);
-        Buffer.BlockCopy(EmailSuffix, 0, result, EmailPrefix.Length + hash.Length, EmailSuffix.Length);
-        return result;
-    }
+        IdentityRewriteMode.Hash => Concat(EmailPrefix, ShortHashAscii(email), EmailSuffix),
+        IdentityRewriteMode.Fixed => _fixedEmail!,
+        _ => email,
+    };
 
     private static byte[] ShortHashAscii(byte[] input)
     {
         var hash = SHA256.HashData(input);
         var hex = Convert.ToHexString(hash).ToLowerInvariant();
         return Encoding.ASCII.GetBytes(hex[..12]);
+    }
+
+    private static byte[] Concat(params byte[][] parts)
+    {
+        var length = 0;
+        foreach (var part in parts)
+        {
+            length += part.Length;
+        }
+
+        var result = new byte[length];
+        var offset = 0;
+        foreach (var part in parts)
+        {
+            Buffer.BlockCopy(part, 0, result, offset, part.Length);
+            offset += part.Length;
+        }
+
+        return result;
     }
 
     private static void WriteBytes(Stream stream, byte[] bytes) => stream.Write(bytes, 0, bytes.Length);
