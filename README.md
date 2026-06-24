@@ -33,7 +33,12 @@ core engine. All history rewriting is performed in pure C# using git's built-in
 Pick a repository once at the top of the window, then switch between the **Analyze**,
 **Vacuum**, **Anonymise**, and **Flatten** tabs to run any operation on it. Destructive
 operations ask for confirmation, progress streams to a shared output log, and a Cancel
-button aborts a running operation. Run it during development with:
+button aborts a running operation.
+
+The **Repo Browser** button opens a modal that scans your drives for git repositories in
+the background (results stream in live, sortable by path or last-changed date, cached to
+disk for instant re-open, with a recent-selections list); choosing one selects it and
+analyses it immediately. Run it during development with:
 
 ```powershell
 dotnet run --project RepoDetox.Gui

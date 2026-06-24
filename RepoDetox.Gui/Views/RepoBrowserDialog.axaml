@@ -1,0 +1,56 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="RepoDetox.Gui.Views.RepoBrowserDialog"
+        Title="Repo Browser"
+        Width="900"
+        Height="600"
+        MinWidth="640"
+        MinHeight="400"
+        WindowStartupLocation="CenterOwner">
+  <DockPanel Margin="10">
+
+    <!-- Top bar -->
+    <Grid DockPanel.Dock="Top" ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,0,0,8">
+      <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <ProgressBar IsIndeterminate="{Binding IsScanning}" Width="120" IsVisible="{Binding IsScanning}" />
+        <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" />
+      </StackPanel>
+      <Button Grid.Column="1" Content="Rescan" Command="{Binding RescanCommand}" Margin="0,0,6,0" />
+      <Button Grid.Column="2" Content="Select" Command="{Binding SelectCommand}" Margin="0,0,6,0" />
+      <Button Grid.Column="3" Content="Cancel" Command="{Binding CancelCommand}" />
+    </Grid>
+
+    <!-- Recent repositories -->
+    <Grid DockPanel.Dock="Left" Width="260" RowDefinitions="Auto,*" Margin="0,0,10,0">
+      <TextBlock Grid.Row="0" Text="Recent" FontWeight="Bold" Margin="0,0,0,4" />
+      <Border Grid.Row="1" BorderBrush="#80808080" BorderThickness="1">
+        <ListBox ItemsSource="{Binding RecentRepositories}"
+                 SelectedItem="{Binding SelectedRecent}"
+                 DoubleTapped="OnRecentDoubleTapped">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Path}" TextTrimming="CharacterEllipsis" FontSize="12" />
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </Border>
+    </Grid>
+
+    <!-- Discovered repositories -->
+    <DataGrid ItemsSource="{Binding ReposView}"
+              SelectedItem="{Binding SelectedRepository}"
+              IsReadOnly="True"
+              CanUserSortColumns="True"
+              CanUserResizeColumns="True"
+              GridLinesVisibility="Horizontal"
+              DoubleTapped="OnReposDoubleTapped">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Last Changed" Binding="{Binding LastChangedDisplay}"
+                            SortMemberPath="LastChangedUtc" Width="170" />
+        <DataGridTextColumn Header="Full Path" Binding="{Binding Path}"
+                            SortMemberPath="Path" Width="*" />
+      </DataGrid.Columns>
+    </DataGrid>
+
+  </DockPanel>
+</Window>

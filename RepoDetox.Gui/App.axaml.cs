@@ -67,12 +67,15 @@ public partial class App : Application
         // GUI services.
         services.AddSingleton<RepositorySession>();
         services.AddSingleton<OperationCoordinator>();
+        services.AddSingleton<RepositoryDiscoveryService>();
+        services.AddSingleton<RepoBrowserStore>();
 
         // View models.
         services.AddSingleton<AnalyzeViewModel>();
         services.AddSingleton<VacuumViewModel>();
         services.AddSingleton<AnonymiseViewModel>();
         services.AddSingleton<FlattenViewModel>();
+        services.AddTransient<RepoBrowserViewModel>();
         services.AddSingleton<MainViewModel>();
     }
 }

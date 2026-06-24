@@ -4,20 +4,29 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RepoDetox.Gui.Services;
+using RepoDetox.Gui.Views;
 
 namespace RepoDetox.Gui.ViewModels;
 
 public sealed partial class MainViewModel : ObservableObject
 {
     private readonly GitCommandRunner _gitCommandRunner;
+    private readonly IServiceProvider _services;
+    private readonly RepoBrowserStore _browserStore;
     private readonly ILogger<MainViewModel> _logger;
+
+    [ObservableProperty]
+    private int selectedTabIndex;
 
     public MainViewModel(
         RepositorySession session,
         OperationCoordinator coordinator,
         GitCommandRunner gitCommandRunner,
+        IServiceProvider services,
+        RepoBrowserStore browserStore,
         AnalyzeViewModel analyze,
         VacuumViewModel vacuum,
         AnonymiseViewModel anonymise,
@@ -27,6 +36,8 @@ public sealed partial class MainViewModel : ObservableObject
         Session = session;
         Coordinator = coordinator;
         _gitCommandRunner = gitCommandRunner;
+        _services = services;
+        _browserStore = browserStore;
         Analyze = analyze;
         Vacuum = vacuum;
         Anonymise = anonymise;
@@ -80,6 +91,39 @@ public sealed partial class MainViewModel : ObservableObject
         if (folders.Count > 0)
         {
             RepositoryPath = folders[0].Path.LocalPath;
+        }
+    }
+
+    [RelayCommand]
+    private async Task OpenRepoBrowserAsync()
+    {
+        var window = MainWindow;
+        if (window is null)
+        {
+            return;
+        }
+
+        var browser = _services.GetRequiredService<RepoBrowserViewModel>();
+        var path = await RepoBrowserDialog.ShowAsync(window, browser);
+
+        if (!string.IsNullOrEmpty(path))
+        {
+            await SelectRepositoryAndAnalyzeAsync(path);
+        }
+    }
+
+    private async Task SelectRepositoryAndAnalyzeAsync(string path)
+    {
+        Session.RepositoryPath = path;
+        OnPropertyChanged(nameof(RepositoryPath));
+
+        await ValidateRepositoryAsync(path);
+        _browserStore.AddRecent(path);
+        SelectedTabIndex = 0;
+
+        if (Session.IsValidRepository)
+        {
+            await Analyze.AnalyzeCommand.ExecuteAsync(null);
         }
     }
 
