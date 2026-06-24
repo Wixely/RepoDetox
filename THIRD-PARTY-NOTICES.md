@@ -19,6 +19,7 @@ permissive and compatible with MIT distribution.
 | Package | Version | License |
 | --- | --- | --- |
 | CommandLineParser | 2.9.1 | MIT |
+| ModelContextProtocol | 1.4.0 | Apache-2.0 |
 | Microsoft.Extensions.Hosting / Logging (and related Microsoft.Extensions.* packages) | 10.0.x | MIT |
 | Serilog.Extensions.Hosting | 10.0.0 | Apache-2.0 |
 | Serilog.Settings.Configuration | 10.0.0 | Apache-2.0 |
@@ -42,13 +43,13 @@ permissive and compatible with MIT distribution. `Avalonia.Fonts.Inter` embeds t
 typeface under the **SIL Open Font License 1.1** (© The Inter Project Authors); the font
 remains under the OFL, which permits bundling and redistribution within an MIT-licensed app.
 
-## Apache License 2.0 attribution (Serilog)
+## Apache License 2.0 attribution (Serilog, ModelContextProtocol)
 
-Serilog and its sinks are Copyright © Serilog Contributors and are licensed under
-the Apache License, Version 2.0. You may obtain a copy of the license at
+Serilog and its sinks (© Serilog Contributors) and the ModelContextProtocol C# SDK
+(© the Model Context Protocol authors / Microsoft) are licensed under the Apache
+License, Version 2.0. You may obtain a copy of the license at
 https://www.apache.org/licenses/LICENSE-2.0. The Apache-2.0 license is compatible
-with redistribution under MIT; the Serilog binaries remain under Apache-2.0 and
-carry no NOTICE file requiring additional attribution beyond this notice.
+with redistribution under MIT; these binaries remain under Apache-2.0.
 
 ## Runtime requirement
 

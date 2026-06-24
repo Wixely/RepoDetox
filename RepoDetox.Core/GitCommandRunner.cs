@@ -60,7 +60,10 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
                 WorkingDirectory = workingDirectory,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
-                RedirectStandardInput = standardInput is not null,
+                // Always redirect stdin so the child git never inherits this process's stdin handle.
+                // That matters when RepoDetox runs as an MCP server: its stdin is the JSON-RPC pipe,
+                // and an inherited handle would otherwise leave git waiting on it.
+                RedirectStandardInput = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             }
@@ -97,6 +100,11 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
         if (standardInput is not null)
         {
             standardInputTask = WriteStandardInputAsync(process, standardInput, cancellationToken);
+        }
+        else
+        {
+            // No input for this command: close stdin so git sees EOF instead of inheriting/blocking.
+            process.StandardInput.Close();
         }
 
         await process.WaitForExitAsync(cancellationToken);

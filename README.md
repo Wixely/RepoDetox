@@ -20,6 +20,7 @@ core engine. All history rewriting is performed in pure C# using git's built-in
 - `vacuum`: rewrites history to remove files that were deleted and are no longer present on any live ref, then expires reflogs and runs garbage collection.
 - `anonymise`: rewrites history to anonymise commit/tag usernames and emails without removing files.
 - `expunge`: rewrites history to replace literal secret strings everywhere they appear (file contents and, by default, commit/tag messages) — for scrubbing accidentally-committed secrets.
+- `mcp`: runs RepoDetox as an stdio [Model Context Protocol](https://modelcontextprotocol.io) server so an AI agent can call the operations as tools. See [MCP server](#mcp-server).
 - `preview`: starts a local browser view for the current analysis to support editor debugging. This is opt-in and requires `Preview:Enabled` to be set to `true` in `appsettings.json`.
 
 ## Prerequisites
@@ -113,6 +114,29 @@ dotnet run --project RepoDetox -- expunge C:\path\to\repo --secret "AKIA...EXAMP
 Use `--replacement <text>` to change the token and `--contents-only` to leave messages untouched.
 **Important:** expunge only removes the secret from *this* repository's history — it was already
 committed and may exist in clones, forks, backups, or CI logs, so rotate/revoke the secret too.
+
+## MCP server
+
+`repodetox mcp` starts an stdio Model Context Protocol server that exposes the same operations as
+tools, so an agent can drive RepoDetox: `analyze_repository` (read-only), `vacuum_repository`,
+`anonymise_repository`, `flatten_repository`, and `expunge_secrets`. Destructive tools require an
+explicit `confirm=true` argument before they rewrite history. stdout carries only the JSON-RPC
+protocol; all logging goes to stderr.
+
+Register it with an MCP client (e.g. an `mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "repodetox": {
+      "command": "C:\\path\\to\\RepoDetox.exe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The existing CLI verbs are unchanged; `mcp` is an additional subcommand.
 
 ## How history rewriting works
 

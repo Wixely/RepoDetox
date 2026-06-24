@@ -10,6 +10,14 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        // Run as an stdio MCP server when invoked as `repodetox mcp`. Handled before the normal
+        // host/Serilog setup so stdout carries only the MCP protocol. Existing verbs are unchanged.
+        if (args.Length > 0 && string.Equals(args[0], "mcp", StringComparison.OrdinalIgnoreCase))
+        {
+            await McpServer.RunAsync(args[1..]);
+            return 0;
+        }
+
         try
         {
             var builder = Host.CreateApplicationBuilder(args);
