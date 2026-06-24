@@ -4,10 +4,9 @@ namespace RepoDetox;
 
 public sealed class RepositoryAnonymiseService(
     GitCommandRunner gitCommandRunner,
+    FastExportImportPipeline fastExportImportPipeline,
     ILogger<RepositoryAnonymiseService> logger)
 {
-    private const string GitFilterRepoScriptName = "git-filter-repo.py";
-
     public async Task<VacuumResult> AnonymiseAsync(
         AnonymiseOptions options,
         CancellationToken cancellationToken = default)
@@ -18,7 +17,6 @@ public sealed class RepositoryAnonymiseService(
         var shouldAnonymiseEmails = options.ShouldAnonymiseEmails;
 
         await EnsureRepositoryIsCleanAsync(repositoryRoot, cancellationToken);
-        await EnsureGitFilterRepoIsAvailableAsync(repositoryRoot, cancellationToken);
 
         if (options.Force)
         {
@@ -36,19 +34,15 @@ public sealed class RepositoryAnonymiseService(
             shouldAnonymiseUsers,
             shouldAnonymiseEmails);
 
-        var filterRepoArguments = BuildFilterRepoArguments(
-            repositoryRoot,
-            shouldAnonymiseUsers,
-            shouldAnonymiseEmails);
+        Console.WriteLine("Starting history rewrite...");
 
-        await gitCommandRunner.RunExternalCheckedAsync(
-            "python",
-            repositoryRoot,
-            filterRepoArguments,
-            cancellationToken,
-            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-            commandDisplayName: GitFilterRepoScriptName);
+        var transform = new AnonymiseFastExportTransform(shouldAnonymiseUsers, shouldAnonymiseEmails);
+        await fastExportImportPipeline.RunAsync(repositoryRoot, transform, cancellationToken);
+
+        Console.WriteLine("Expiring reflogs...");
         await gitCommandRunner.RunCheckedAsync(repositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
+
+        Console.WriteLine("Running git gc...");
         await gitCommandRunner.RunCheckedAsync(repositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
         var message =
@@ -74,55 +68,6 @@ public sealed class RepositoryAnonymiseService(
 
         throw new InvalidOperationException(
             "The target repository has uncommitted changes. Commit or stash them before running anonymise.");
-    }
-
-    private async Task EnsureGitFilterRepoIsAvailableAsync(string repositoryRoot, CancellationToken cancellationToken)
-    {
-        var scriptPath = ResolveGitFilterRepoScriptPath();
-        var result = await gitCommandRunner.RunExternalAsync(
-            "python",
-            repositoryRoot,
-            [scriptPath, "--version"],
-            cancellationToken,
-            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-            commandDisplayName: GitFilterRepoScriptName);
-
-        if (result.ExitCode == 0)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            $"The '{GitFilterRepoScriptName}' script is required for anonymise. Place '{GitFilterRepoScriptName}' on PATH, " +
-            "install it with 'python -m pip install git-filter-repo', or see https://github.com/newren/git-filter-repo/blob/main/INSTALL.md " +
-            "for the upstream installation instructions.");
-    }
-
-    private static List<string> BuildFilterRepoArguments(
-        string repositoryRoot,
-        bool anonymiseUsers,
-        bool anonymiseEmails)
-    {
-        var scriptPath = ResolveGitFilterRepoScriptPath(repositoryRoot);
-        var filterRepoArguments = new List<string>
-        {
-            scriptPath,
-            "--force"
-        };
-
-        if (anonymiseUsers)
-        {
-            filterRepoArguments.Add("--name-callback");
-            filterRepoArguments.Add(BuildAnonymiseUserCallback());
-        }
-
-        if (anonymiseEmails)
-        {
-            filterRepoArguments.Add("--email-callback");
-            filterRepoArguments.Add(BuildAnonymiseEmailCallback());
-        }
-
-        return filterRepoArguments;
     }
 
     private async Task<string> ResolveRepositoryRootAsync(string repositoryPath, CancellationToken cancellationToken)
@@ -167,36 +112,6 @@ public sealed class RepositoryAnonymiseService(
         return result.StandardOutput.Trim();
     }
 
-    private static string ResolveGitFilterRepoScriptPath(string? repositoryRoot = null)
-    {
-        var searchDirectories = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(repositoryRoot))
-        {
-            searchDirectories.Add(repositoryRoot);
-        }
-
-        searchDirectories.Add(AppContext.BaseDirectory);
-
-        var pathValue = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathValue))
-        {
-            searchDirectories.AddRange(
-                pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        }
-
-        foreach (var directory in searchDirectories.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var candidate = Path.Combine(directory, GitFilterRepoScriptName);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return GitFilterRepoScriptName;
-    }
-
     private static bool ConfirmRewrite(
         string repositoryRoot,
         string currentBranch,
@@ -231,10 +146,4 @@ public sealed class RepositoryAnonymiseService(
             : anonymiseUsers
                 ? "usernames"
                 : "emails";
-
-    private static string BuildAnonymiseUserCallback() =>
-        "import hashlib; return b\"anonymous-user-\" + hashlib.sha256(name).hexdigest()[:12].encode(\"ascii\")";
-
-    private static string BuildAnonymiseEmailCallback() =>
-        "import hashlib; return b\"anonymous-email-\" + hashlib.sha256(email).hexdigest()[:12].encode(\"ascii\") + b\"@example.invalid\"";
 }

@@ -1,21 +1,18 @@
 using Microsoft.Extensions.Logging;
-using System.Text;
 
 namespace RepoDetox;
 
 public sealed class RepositoryVacuumService(
     GitCommandRunner gitCommandRunner,
     RepositoryAnalyzer repositoryAnalyzer,
+    FastExportImportPipeline fastExportImportPipeline,
     ILogger<RepositoryVacuumService> logger)
 {
-    private const string GitFilterRepoScriptName = "git-filter-repo.py";
-
     public async Task<VacuumResult> VacuumAsync(
         VacuumOptions options,
         CancellationToken cancellationToken = default)
     {
         var analysis = await repositoryAnalyzer.AnalyzeAsync(options.RepositoryPath, cancellationToken);
-        var remotes = await GetConfiguredRemotesAsync(analysis.RepositoryRoot, cancellationToken);
 
         Console.WriteLine("Vacuum analysis:");
         RepositoryScanConsoleWriter.Write(analysis);
@@ -29,15 +26,12 @@ public sealed class RepositoryVacuumService(
         }
 
         await EnsureRepositoryIsCleanAsync(analysis.RepositoryRoot, cancellationToken);
-        await EnsureGitFilterRepoIsAvailableAsync(analysis.RepositoryRoot, cancellationToken);
-
-        var restoreRemotesAfterRewrite = false;
 
         if (options.Force)
         {
-            WriteRewriteWarnings(analysis, remotes);
+            WriteRewriteWarnings(analysis);
         }
-        else if (!ConfirmRewrite(analysis, remotes, out restoreRemotesAfterRewrite))
+        else if (!ConfirmRewrite(analysis))
         {
             logger.LogWarning("Vacuum command was cancelled by the operator for {RepositoryRoot}.", analysis.RepositoryRoot);
             return new VacuumResult(false, "History rewrite cancelled.");
@@ -48,45 +42,20 @@ public sealed class RepositoryVacuumService(
             analysis.RepositoryRoot,
             analysis.HistoricalOnlyPaths.Count);
 
-        var pathsFilePath = await WritePathsFileAsync(analysis.RepositoryRoot, analysis.HistoricalOnlyPaths, cancellationToken);
-        var filterRepoArguments = BuildFilterRepoArguments(analysis.RepositoryRoot, pathsFilePath);
+        Console.WriteLine("Starting history rewrite...");
 
-        Console.WriteLine("Starting history rewrite with git-filter-repo...");
-        Console.WriteLine("Progress output will appear below.");
-        Console.WriteLine();
+        var transform = new VacuumFastExportTransform(analysis.HistoricalOnlyPaths);
+        await fastExportImportPipeline.RunAsync(analysis.RepositoryRoot, transform, cancellationToken);
 
-        try
-        {
-            await gitCommandRunner.RunExternalCheckedAsync(
-                "python",
-                analysis.RepositoryRoot,
-                filterRepoArguments,
-                cancellationToken,
-                startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-                commandDisplayName: GitFilterRepoScriptName,
-                echoOutputToConsole: true);
-        }
-        finally
-        {
-            TryDeleteTemporaryFile(pathsFilePath);
-        }
-
-        Console.WriteLine();
         Console.WriteLine("Expiring reflogs...");
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["reflog", "expire", "--expire=now", "--all"], cancellationToken);
 
         Console.WriteLine("Running git gc...");
         await gitCommandRunner.RunCheckedAsync(analysis.RepositoryRoot, ["gc", "--prune=now", "--aggressive"], cancellationToken);
 
-        if (restoreRemotesAfterRewrite && remotes.Count > 0)
-        {
-            Console.WriteLine("Restoring saved remotes...");
-            await RestoreRemotesAsync(analysis.RepositoryRoot, remotes, cancellationToken);
-        }
-
         var message =
             $"Completed history rewrite in {analysis.RepositoryRoot}: removed {analysis.HistoricalOnlyPaths.Count} deleted path(s) from history. " +
-            $"The repository was then compacted{BuildRemoteRestoreSuffix(restoreRemotesAfterRewrite, remotes.Count)}.";
+            "The repository was then compacted.";
 
         logger.LogInformation(message);
 
@@ -109,176 +78,9 @@ public sealed class RepositoryVacuumService(
             "The target repository has uncommitted changes. Commit or stash them before running vacuum.");
     }
 
-    private async Task EnsureGitFilterRepoIsAvailableAsync(string repositoryRoot, CancellationToken cancellationToken)
+    private static bool ConfirmRewrite(RepositoryScanResult analysis)
     {
-        var scriptPath = ResolveGitFilterRepoScriptPath();
-        var result = await gitCommandRunner.RunExternalAsync(
-            "python",
-            repositoryRoot,
-            [scriptPath, "--version"],
-            cancellationToken,
-            startupErrorMessage: "Python could not be started. Ensure python is installed and available on PATH.",
-            commandDisplayName: GitFilterRepoScriptName);
-
-        if (result.ExitCode == 0)
-        {
-            return;
-        }
-
-        throw new InvalidOperationException(
-            $"The '{GitFilterRepoScriptName}' script is required for vacuum. Place '{GitFilterRepoScriptName}' on PATH, " +
-            "install it with 'python -m pip install git-filter-repo', or see https://github.com/newren/git-filter-repo/blob/main/INSTALL.md " +
-            "for the upstream installation instructions.");
-    }
-
-    private static List<string> BuildFilterRepoArguments(
-        string repositoryRoot,
-        string pathsFilePath)
-    {
-        var scriptPath = ResolveGitFilterRepoScriptPath(repositoryRoot);
-        return
-        [
-            scriptPath,
-            "--force",
-            "--invert-paths",
-            "--paths-from-file",
-            pathsFilePath
-        ];
-    }
-
-    private static async Task<string> WritePathsFileAsync(
-        string repositoryRoot,
-        IReadOnlyList<string> historicalOnlyPaths,
-        CancellationToken cancellationToken)
-    {
-        var pathsFilePath = Path.Combine(
-            repositoryRoot,
-            $".repo-detox-vacuum-paths-{Guid.NewGuid():N}.txt");
-
-        var contents = string.Join(
-            Environment.NewLine,
-            historicalOnlyPaths.Select(path => $"literal:{path}"));
-
-        await File.WriteAllTextAsync(
-            pathsFilePath,
-            contents + Environment.NewLine,
-            new UTF8Encoding(false),
-            cancellationToken);
-
-        return pathsFilePath;
-    }
-
-    private void TryDeleteTemporaryFile(string pathsFilePath)
-    {
-        try
-        {
-            if (File.Exists(pathsFilePath))
-            {
-                File.Delete(pathsFilePath);
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Failed to delete temporary git-filter-repo paths file {PathsFilePath}.", pathsFilePath);
-        }
-    }
-
-    private static string ResolveGitFilterRepoScriptPath(string? repositoryRoot = null)
-    {
-        var searchDirectories = new List<string>();
-
-        if (!string.IsNullOrWhiteSpace(repositoryRoot))
-        {
-            searchDirectories.Add(repositoryRoot);
-        }
-
-        searchDirectories.Add(AppContext.BaseDirectory);
-
-        var pathValue = Environment.GetEnvironmentVariable("PATH");
-        if (!string.IsNullOrWhiteSpace(pathValue))
-        {
-            searchDirectories.AddRange(
-                pathValue.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
-        }
-
-        foreach (var directory in searchDirectories.Distinct(StringComparer.OrdinalIgnoreCase))
-        {
-            var candidate = Path.Combine(directory, GitFilterRepoScriptName);
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return GitFilterRepoScriptName;
-    }
-
-    private async Task<IReadOnlyList<RemoteConfiguration>> GetConfiguredRemotesAsync(
-        string repositoryRoot,
-        CancellationToken cancellationToken)
-    {
-        var listResult = await gitCommandRunner.RunCheckedAsync(
-            repositoryRoot,
-            ["remote"],
-            cancellationToken);
-
-        var remoteNames = listResult.StandardOutput
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        var remotes = new List<RemoteConfiguration>();
-
-        foreach (var remoteName in remoteNames)
-        {
-            var fetchUrlResult = await gitCommandRunner.RunCheckedAsync(
-                repositoryRoot,
-                ["remote", "get-url", remoteName],
-                cancellationToken);
-
-            var pushUrlResult = await gitCommandRunner.RunAsync(
-                repositoryRoot,
-                ["remote", "get-url", "--push", remoteName],
-                cancellationToken);
-
-            var fetchUrl = fetchUrlResult.StandardOutput.Trim();
-            var pushUrl = pushUrlResult.ExitCode == 0 && !string.IsNullOrWhiteSpace(pushUrlResult.StandardOutput)
-                ? pushUrlResult.StandardOutput.Trim()
-                : fetchUrl;
-
-            remotes.Add(new RemoteConfiguration(remoteName, fetchUrl, pushUrl));
-        }
-
-        return remotes;
-    }
-
-    private async Task RestoreRemotesAsync(
-        string repositoryRoot,
-        IReadOnlyList<RemoteConfiguration> remotes,
-        CancellationToken cancellationToken)
-    {
-        foreach (var remote in remotes)
-        {
-            await gitCommandRunner.RunCheckedAsync(
-                repositoryRoot,
-                ["remote", "add", remote.Name, remote.FetchUrl],
-                cancellationToken);
-
-            if (!string.Equals(remote.FetchUrl, remote.PushUrl, StringComparison.Ordinal))
-            {
-                await gitCommandRunner.RunCheckedAsync(
-                    repositoryRoot,
-                    ["remote", "set-url", "--push", remote.Name, remote.PushUrl],
-                    cancellationToken);
-            }
-        }
-    }
-
-    private static bool ConfirmRewrite(
-        RepositoryScanResult analysis,
-        IReadOnlyList<RemoteConfiguration> remotes,
-        out bool restoreRemotesAfterRewrite)
-    {
-        WriteRewriteWarnings(analysis, remotes);
-        restoreRemotesAfterRewrite = remotes.Count > 0 && PromptToRestoreRemotes(remotes);
+        WriteRewriteWarnings(analysis);
         Console.Write("Continue? [y/N]: ");
 
         var response = Console.ReadLine();
@@ -286,50 +88,13 @@ public sealed class RepositoryVacuumService(
             || string.Equals(response, "yes", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static void WriteRewriteWarnings(
-        RepositoryScanResult analysis,
-        IReadOnlyList<RemoteConfiguration> remotes)
+    private static void WriteRewriteWarnings(RepositoryScanResult analysis)
     {
         Console.WriteLine("Warning: this will rewrite git history to remove files that were deleted and are no longer present on any live ref.");
         Console.WriteLine($"Repository: {analysis.RepositoryRoot}");
         Console.WriteLine($"Current branch: {analysis.CurrentBranch}");
         Console.WriteLine($"Paths to remove: {analysis.HistoricalOnlyPaths.Count}");
-
-        if (remotes.Count > 0)
-        {
-            Console.WriteLine($"Configured remotes: {string.Join(", ", remotes.Select(remote => remote.Name))}");
-            Console.WriteLine("Warning: git-filter-repo removes remotes such as 'origin' as a safety measure.");
-            Console.WriteLine("Reason: after a history rewrite, pushing or merging against the old remote state can reintroduce the old history and create a worse mess with duplicate commit graphs.");
-        }
-
+        Console.WriteLine("Warning: rewriting history changes commit hashes. Pushing the rewritten history to an existing remote can reintroduce the old history and create duplicate commit graphs; coordinate a force-push or a fresh remote.");
         Console.WriteLine();
     }
-
-    private static bool PromptToRestoreRemotes(IReadOnlyList<RemoteConfiguration> remotes)
-    {
-        Console.Write("Re-add the saved remotes after the rewrite completes? [Y/n]: ");
-        var response = Console.ReadLine();
-
-        if (string.IsNullOrWhiteSpace(response))
-        {
-            return true;
-        }
-
-        return !string.Equals(response, "n", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(response, "no", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string BuildRemoteRestoreSuffix(bool restoreRemotesAfterRewrite, int remoteCount)
-    {
-        if (remoteCount == 0)
-        {
-            return string.Empty;
-        }
-
-        return restoreRemotesAfterRewrite
-            ? ", and the saved remotes were restored"
-            : ", and remotes were left removed by git-filter-repo";
-    }
-
-    private sealed record RemoteConfiguration(string Name, string FetchUrl, string PushUrl);
 }

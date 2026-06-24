@@ -14,15 +14,10 @@ Placeholder repository for a .NET 8 command-line tool that inspects a git reposi
 
 - .NET 8 SDK or newer to build/publish
 - Git on `PATH`
-- `git-filter-repo.py` on `PATH` for the `vacuum` and `anonymise` commands
 
-If `git-filter-repo.py` is missing, a straightforward install is:
-
-```powershell
-python -m pip install git-filter-repo
-```
-
-Upstream installation instructions: https://github.com/newren/git-filter-repo/blob/main/INSTALL.md
+All history rewriting is performed in pure C# using git's built-in
+`git fast-export` and `git fast-import`. There is no Python or `git-filter-repo`
+dependency.
 
 ## Portable Build
 
@@ -51,3 +46,24 @@ You can pass the repository either as a positional argument like `list C:\path\t
 To anonymise commit metadata without removing files, use `anonymise`. By default it rewrites both usernames and emails; use `--users` or `--emails` to target one side only. This rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
 
 To delete all history and keep only the current repository state, use `flatten`. This creates a single new root commit and removes all other refs, so prior hashes and tags stop being valid.
+
+## How history rewriting works
+
+`vacuum` and `anonymise` stream the repository through git's own plumbing:
+
+```
+git fast-export --all  →  in-process C# transform  →  git fast-import --force
+```
+
+The transform parses the [fast-import stream format](https://git-scm.com/docs/git-fast-import)
+as raw bytes and either rewrites identity lines (anonymise) or drops the file-change
+operations for removed paths (vacuum). Both commands then run `git reflog expire` and
+`git gc --prune=now --aggressive` to reclaim space. This is an original implementation
+derived from the public git documentation; it borrows no third-party code. The technique
+(filtering a fast-export stream) is the same general approach used by `git filter-branch`
+and git-filter-repo.
+
+## License
+
+RepoDetox is released under the [MIT License](LICENSE). Third-party dependency licenses
+are listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

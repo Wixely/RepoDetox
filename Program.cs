@@ -35,6 +35,7 @@ public static class Program
             builder.Services.AddSerilog(Log.Logger, dispose: false);
             builder.Services.AddSingleton<CliApplication>();
             builder.Services.AddSingleton<GitCommandRunner>();
+            builder.Services.AddSingleton<FastExportImportPipeline>();
             builder.Services.AddSingleton<PreviewServer>();
             builder.Services.AddSingleton<RepositoryAnalyzer>();
             builder.Services.AddSingleton<RepositoryAnonymiseService>();
