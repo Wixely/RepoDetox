@@ -22,13 +22,48 @@ public partial class App : Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow
+            var mainViewModel = provider.GetRequiredService<MainViewModel>();
+
+            // Optional startup argument: a repository path (positional, or --repo/-r <path>) to
+            // pre-select on launch, e.g. `RepoDetox.Gui C:\path\to\repo`.
+            var repositoryPath = ParseRepositoryArgument(desktop.Args);
+            if (!string.IsNullOrWhiteSpace(repositoryPath))
             {
-                DataContext = provider.GetRequiredService<MainViewModel>()
-            };
+                mainViewModel.RepositoryPath = repositoryPath;
+            }
+
+            desktop.MainWindow = new MainWindow { DataContext = mainViewModel };
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private static string? ParseRepositoryArgument(string[]? args)
+    {
+        if (args is null)
+        {
+            return null;
+        }
+
+        for (var index = 0; index < args.Length; index++)
+        {
+            var arg = args[index];
+
+            if ((string.Equals(arg, "--repo", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(arg, "-r", StringComparison.OrdinalIgnoreCase))
+                && index + 1 < args.Length)
+            {
+                return args[index + 1];
+            }
+
+            // A bare positional path to an existing directory.
+            if (!arg.StartsWith('-') && Directory.Exists(arg))
+            {
+                return arg;
+            }
+        }
+
+        return null;
     }
 
     private static void ConfigureServices(IServiceCollection services)

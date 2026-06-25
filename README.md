@@ -40,7 +40,10 @@ button aborts a running operation.
 The **Repo Browser** button opens a modal that scans your drives for git repositories in
 the background (results stream in live, sortable by path or last-changed date, cached to
 disk for instant re-open, with a recent-selections list); choosing one selects it and
-analyses it immediately. Run it during development with:
+analyses it immediately.
+
+You can also launch the GUI pre-selected on a repository by passing its path (positional or
+`--repo <path>`), e.g. `RepoDetox.Gui C:\path\to\repo`. Run it during development with:
 
 ```powershell
 dotnet run --project RepoDetox.Gui
