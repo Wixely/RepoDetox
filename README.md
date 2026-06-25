@@ -100,6 +100,23 @@ dotnet run --project RepoDetox -- anonymise C:\path\to\repo --set-name "Anon" --
 
 `--set-name`/`--set-email` apply to authors, committers, and taggers. Passing either one targets only that side unless you also pass `--users`/`--emails`. Anonymising rewrites commit hashes, so any clones, forks, pull requests, signed objects, or tooling that references existing hashes can be affected.
 
+To replace one **specific contributor** with another (instead of anonymising everyone), use
+`--map`. List the repository's existing identities with the `contributors` command, then map an
+old identity to a new one — the target can be another existing contributor or a custom name/email.
+Only the listed contributors are changed; everyone else is left unchanged.
+
+```powershell
+# See existing contributors
+dotnet run --project RepoDetox -- contributors C:\path\to\repo
+
+# Replace one contributor (repeat --map for several)
+dotnet run --project RepoDetox -- anonymise C:\path\to\repo --map "Old Name <old@email>=New Name <new@email>"
+```
+
+In the GUI, the Anonymise tab offers the same choice: *Anonymise everyone* or *Replace specific
+contributors* (pick a source from the loaded contributor list and a target that is either another
+contributor or a custom name/email).
+
 To delete all history and keep only the current repository state, use `flatten`. This creates a single new root commit and removes all other refs, so prior hashes and tags stop being valid.
 
 To scrub an accidentally-committed secret out of history, use `expunge`. It replaces each literal

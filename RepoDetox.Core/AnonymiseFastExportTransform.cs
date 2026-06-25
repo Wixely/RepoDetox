@@ -23,12 +23,14 @@ public sealed class AnonymiseFastExportTransform : FastExportTransform
     private readonly IdentityRewriteMode _emailMode;
     private readonly byte[]? _fixedName;
     private readonly byte[]? _fixedEmail;
+    private readonly Dictionary<(string Name, string Email), IdentityMapping> _mappings;
 
     public AnonymiseFastExportTransform(
         IdentityRewriteMode nameMode,
         IdentityRewriteMode emailMode,
         string? fixedName = null,
-        string? fixedEmail = null)
+        string? fixedEmail = null,
+        IReadOnlyList<IdentityMapping>? mappings = null)
     {
         _nameMode = nameMode;
         _emailMode = emailMode;
@@ -38,11 +40,22 @@ public sealed class AnonymiseFastExportTransform : FastExportTransform
         _fixedEmail = emailMode == IdentityRewriteMode.Fixed
             ? Encoding.UTF8.GetBytes(fixedEmail ?? throw new ArgumentNullException(nameof(fixedEmail)))
             : null;
+
+        _mappings = new Dictionary<(string, string), IdentityMapping>();
+        if (mappings is not null)
+        {
+            foreach (var mapping in mappings)
+            {
+                _mappings[(mapping.SourceName, mapping.SourceEmail)] = mapping;
+            }
+        }
     }
 
     protected override byte[] TransformIdentity(byte[] line, IdentityKind kind)
     {
-        if (_nameMode == IdentityRewriteMode.Keep && _emailMode == IdentityRewriteMode.Keep)
+        if (_mappings.Count == 0
+            && _nameMode == IdentityRewriteMode.Keep
+            && _emailMode == IdentityRewriteMode.Keep)
         {
             return line;
         }
@@ -80,11 +93,27 @@ public sealed class AnonymiseFastExportTransform : FastExportTransform
         var email = Slice(line, emailStart + 1, emailEnd);
         var suffix = Slice(line, emailEnd, line.Length);   // '>' + ' ' + timestamp + tz
 
+        byte[] newName;
+        byte[] newEmail;
+
+        if (_mappings.Count > 0
+            && _mappings.TryGetValue((Encoding.UTF8.GetString(name), Encoding.UTF8.GetString(email)), out var mapping))
+        {
+            // A specific-contributor mapping matched: replace with the target (keeping a side when blank).
+            newName = string.IsNullOrEmpty(mapping.TargetName) ? name : Encoding.UTF8.GetBytes(mapping.TargetName);
+            newEmail = string.IsNullOrEmpty(mapping.TargetEmail) ? email : Encoding.UTF8.GetBytes(mapping.TargetEmail);
+        }
+        else
+        {
+            newName = RewriteName(name);
+            newEmail = RewriteEmail(email);
+        }
+
         using var output = new MemoryStream(line.Length + 32);
         output.Write(line, 0, valueStart); // keyword + ' '
-        WriteBytes(output, RewriteName(name));
+        WriteBytes(output, newName);
         WriteBytes(output, middle);
-        WriteBytes(output, RewriteEmail(email));
+        WriteBytes(output, newEmail);
         WriteBytes(output, suffix);
 
         return output.ToArray();

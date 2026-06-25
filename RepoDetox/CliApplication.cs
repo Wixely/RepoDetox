@@ -11,6 +11,7 @@ public sealed class CliApplication(
     RepositoryVacuumService repositoryVacuumService,
     RepositoryFlattenService repositoryFlattenService,
     RepositoryExpungeService repositoryExpungeService,
+    RepositoryContributorService repositoryContributorService,
     PreviewServer previewServer,
     IOperationReporter reporter)
 {
@@ -23,7 +24,7 @@ public sealed class CliApplication(
             with.HelpWriter = null;
         });
 
-        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, AnonymiseOptions, FlattenOptions, ExpungeOptions, PreviewOptions>(args);
+        var parserResult = parser.ParseArguments<ListOptions, VacuumOptions, AnonymiseOptions, FlattenOptions, ExpungeOptions, ContributorsOptions, PreviewOptions>(args);
 
         try
         {
@@ -36,6 +37,7 @@ public sealed class CliApplication(
                     AnonymiseOptions options => await HandleAnonymiseAsync(options, cancellationToken),
                     FlattenOptions options => await HandleFlattenAsync(options, cancellationToken),
                     ExpungeOptions options => await HandleExpungeAsync(options, cancellationToken),
+                    ContributorsOptions options => await HandleContributorsAsync(options, cancellationToken),
                     PreviewOptions options => await previewServer.RunAsync(options, cancellationToken),
                     _ => throw new InvalidOperationException("Unsupported command line verb.")
                 };
@@ -89,16 +91,106 @@ public sealed class CliApplication(
             return 1;
         }
 
-        var request = new AnonymiseRequest(
-            options.RepositoryPath,
-            options.Force,
-            options.NameMode,
-            options.EmailMode,
-            options.SetName,
-            options.SetEmail);
+        var mapStrings = options.Map.Where(value => !string.IsNullOrWhiteSpace(value)).ToList();
+        AnonymiseRequest request;
+
+        if (mapStrings.Count > 0)
+        {
+            // Replace-specific-contributors mode: only the listed identities change; leave the rest.
+            var mappings = new List<IdentityMapping>();
+            foreach (var entry in mapStrings)
+            {
+                if (!TryParseMapping(entry, out var mapping))
+                {
+                    Console.Error.WriteLine($"Error: invalid --map value '{entry}'. Expected \"Old Name <old@email>=New Name <new@email>\".");
+                    return 1;
+                }
+
+                mappings.Add(mapping);
+            }
+
+            request = new AnonymiseRequest(
+                options.RepositoryPath,
+                options.Force,
+                IdentityRewriteMode.Keep,
+                IdentityRewriteMode.Keep,
+                FixedName: null,
+                FixedEmail: null,
+                mappings);
+        }
+        else
+        {
+            request = new AnonymiseRequest(
+                options.RepositoryPath,
+                options.Force,
+                options.NameMode,
+                options.EmailMode,
+                options.SetName,
+                options.SetEmail);
+        }
+
         var result = await repositoryAnonymiseService.AnonymiseAsync(request, reporter, cancellationToken);
         Console.WriteLine(result.Message);
         return 0;
+    }
+
+    private async Task<int> HandleContributorsAsync(ContributorsOptions options, CancellationToken cancellationToken)
+    {
+        var contributors = await repositoryContributorService.GetContributorsAsync(options.RepositoryPath, cancellationToken);
+
+        if (contributors.Count == 0)
+        {
+            Console.WriteLine("No contributors found.");
+            return 0;
+        }
+
+        foreach (var contributor in contributors)
+        {
+            Console.WriteLine(contributor.Display);
+        }
+
+        return 0;
+    }
+
+    private static bool TryParseMapping(string value, out IdentityMapping mapping)
+    {
+        mapping = null!;
+
+        // Split source from target at the first ">=" boundary (the source's closing '>' then '=').
+        var boundary = value.IndexOf(">=", StringComparison.Ordinal);
+        if (boundary < 0)
+        {
+            return false;
+        }
+
+        var sourceText = value[..(boundary + 1)];
+        var targetText = value[(boundary + 2)..];
+
+        if (!TryParseIdentity(sourceText, out var sourceName, out var sourceEmail)
+            || !TryParseIdentity(targetText, out var targetName, out var targetEmail))
+        {
+            return false;
+        }
+
+        mapping = new IdentityMapping(sourceName, sourceEmail, targetName, targetEmail);
+        return true;
+    }
+
+    private static bool TryParseIdentity(string text, out string name, out string email)
+    {
+        name = string.Empty;
+        email = string.Empty;
+
+        var open = text.LastIndexOf('<');
+        var close = text.LastIndexOf('>');
+        if (open < 0 || close < open)
+        {
+            return false;
+        }
+
+        name = text[..open].Trim();
+        email = text[(open + 1)..close].Trim();
+        return email.Length > 0;
     }
 
     private async Task<int> HandleFlattenAsync(FlattenOptions options, CancellationToken cancellationToken)

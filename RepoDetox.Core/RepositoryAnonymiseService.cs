@@ -14,7 +14,8 @@ public sealed class RepositoryAnonymiseService(
     {
         var repositoryRoot = await ResolveRepositoryRootAsync(request.RepositoryPath, cancellationToken);
         var currentBranch = await GetCurrentBranchAsync(repositoryRoot, cancellationToken);
-        var description = DescribeTargets(request.NameMode, request.FixedName, request.EmailMode, request.FixedEmail);
+        var mappings = request.Mappings ?? [];
+        var description = DescribeTargets(request.NameMode, request.FixedName, request.EmailMode, request.FixedEmail, mappings.Count);
 
         await EnsureRepositoryIsCleanAsync(repositoryRoot, cancellationToken);
 
@@ -38,7 +39,8 @@ public sealed class RepositoryAnonymiseService(
             request.NameMode,
             request.EmailMode,
             request.FixedName,
-            request.FixedEmail);
+            request.FixedEmail,
+            mappings);
         await fastExportImportPipeline.RunAsync(repositoryRoot, transform, cancellationToken);
 
         reporter.Report("Expiring reflogs...");
@@ -132,9 +134,15 @@ public sealed class RepositoryAnonymiseService(
         IdentityRewriteMode nameMode,
         string? fixedName,
         IdentityRewriteMode emailMode,
-        string? fixedEmail)
+        string? fixedEmail,
+        int mappingCount)
     {
         var parts = new List<string>();
+
+        if (mappingCount > 0)
+        {
+            parts.Add($"{mappingCount} specific contributor replacement(s)");
+        }
 
         if (nameMode == IdentityRewriteMode.Hash)
         {

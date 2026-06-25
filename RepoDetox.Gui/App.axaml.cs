@@ -99,6 +99,7 @@ public partial class App : Application
         services.AddSingleton<RepositoryAnonymiseService>();
         services.AddSingleton<RepositoryFlattenService>();
         services.AddSingleton<RepositoryExpungeService>();
+        services.AddSingleton<RepositoryContributorService>();
 
         // GUI services.
         services.AddSingleton<RepositorySession>();

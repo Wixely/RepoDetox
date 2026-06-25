@@ -1,25 +1,90 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="RepoDetox.Gui.Views.AnonymiseView">
-  <StackPanel Margin="12" Spacing="10">
-    <TextBlock Text="Anonymise rewrites author, committer, and tagger identities across all history."
-               TextWrapping="Wrap" />
+  <ScrollViewer>
+    <StackPanel Margin="12" Spacing="10">
+      <TextBlock Text="Anonymise rewrites author, committer, and tagger identities across all history."
+                 TextWrapping="Wrap" />
 
-    <CheckBox Content="Anonymise usernames (deterministic hash)" IsChecked="{Binding AnonymiseUsers}" />
-    <CheckBox Content="Anonymise emails (deterministic hash)" IsChecked="{Binding AnonymiseEmails}" />
+      <!-- Mode selection -->
+      <StackPanel Orientation="Horizontal" Spacing="16">
+        <RadioButton GroupName="AnonMode" Content="Anonymise everyone" IsChecked="{Binding AnonymiseEveryoneMode}" />
+        <RadioButton GroupName="AnonMode" Content="Replace specific contributors" IsChecked="{Binding ReplaceSpecificMode}" />
+      </StackPanel>
 
-    <TextBlock Text="Optionally set a fixed value for everyone (overrides the hash for that field):"
-               TextWrapping="Wrap" Margin="0,4,0,0" />
+      <!-- Mode A: anonymise everyone -->
+      <StackPanel Spacing="10" IsVisible="{Binding AnonymiseEveryoneMode}">
+        <CheckBox Content="Anonymise usernames (deterministic hash)" IsChecked="{Binding AnonymiseUsers}" />
+        <CheckBox Content="Anonymise emails (deterministic hash)" IsChecked="{Binding AnonymiseEmails}" />
+        <TextBlock Text="Optionally set a fixed value for everyone (overrides the hash for that field):" TextWrapping="Wrap" />
+        <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" VerticalAlignment="Center" />
+          <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FixedName}" Watermark="(leave blank to hash)" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Email:" VerticalAlignment="Center" Margin="0,6,0,0" />
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FixedEmail}" Watermark="(leave blank to hash)" Margin="0,6,0,0" />
+        </Grid>
+      </StackPanel>
 
-    <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" >
-      <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" VerticalAlignment="Center" />
-      <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding FixedName}" Watermark="(leave blank to hash)" />
-      <TextBlock Grid.Row="1" Grid.Column="0" Text="Email:" VerticalAlignment="Center" Margin="0,6,0,0" />
-      <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding FixedEmail}" Watermark="(leave blank to hash)" Margin="0,6,0,0" />
-    </Grid>
+      <!-- Mode B: replace specific contributors -->
+      <StackPanel Spacing="8" IsVisible="{Binding ReplaceSpecificMode}">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Content="Load contributors" Command="{Binding LoadContributorsCommand}" IsEnabled="{Binding CanRun}" />
+          <TextBlock Text="{Binding ContributorsStatus}" VerticalAlignment="Center" Foreground="#808080" />
+        </StackPanel>
 
-    <TextBlock Text="Destructive: this rewrites commit hashes. You will be asked to confirm."
-               Foreground="#B00020" TextWrapping="Wrap" Margin="0,4,0,0" />
-    <Button Content="Anonymise" Command="{Binding AnonymiseCommand}" IsEnabled="{Binding CanRun}" HorizontalAlignment="Left" />
-  </StackPanel>
+        <TextBlock Text="Replace this contributor:" FontWeight="Bold" />
+        <ComboBox HorizontalAlignment="Stretch" ItemsSource="{Binding Contributors}" SelectedItem="{Binding SelectedSource}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Display}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <TextBlock Text="With:" FontWeight="Bold" />
+        <StackPanel Orientation="Horizontal" Spacing="16">
+          <RadioButton GroupName="AnonTarget" Content="Existing contributor" IsChecked="{Binding TargetIsExisting}" />
+          <RadioButton GroupName="AnonTarget" Content="Custom name / email" IsChecked="{Binding TargetIsCustom}" />
+        </StackPanel>
+
+        <ComboBox HorizontalAlignment="Stretch" IsVisible="{Binding TargetIsExisting}"
+                  ItemsSource="{Binding Contributors}" SelectedItem="{Binding SelectedTarget}">
+          <ComboBox.ItemTemplate>
+            <DataTemplate>
+              <TextBlock Text="{Binding Display}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+
+        <Grid ColumnDefinitions="70,*" RowDefinitions="Auto,Auto" IsVisible="{Binding TargetIsCustom}">
+          <TextBlock Grid.Row="0" Grid.Column="0" Text="Name:" VerticalAlignment="Center" />
+          <TextBox Grid.Row="0" Grid.Column="1" Text="{Binding CustomTargetName}" Watermark="(leave blank to keep)" />
+          <TextBlock Grid.Row="1" Grid.Column="0" Text="Email:" VerticalAlignment="Center" Margin="0,6,0,0" />
+          <TextBox Grid.Row="1" Grid.Column="1" Text="{Binding CustomTargetEmail}" Watermark="(leave blank to keep)" Margin="0,6,0,0" />
+        </Grid>
+
+        <Button Content="Add replacement" Command="{Binding AddMappingCommand}" HorizontalAlignment="Left" />
+
+        <TextBlock Text="Replacements to apply:" FontWeight="Bold" Margin="0,4,0,0" />
+        <Border BorderBrush="#80808080" BorderThickness="1" MinHeight="80">
+          <ItemsControl ItemsSource="{Binding Mappings}" Margin="4">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate>
+                <Grid ColumnDefinitions="*,Auto" Margin="0,2">
+                  <TextBlock Grid.Column="0" Text="{Binding Display}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                  <Button Grid.Column="1" Content="Remove"
+                          Command="{Binding $parent[ItemsControl].DataContext.RemoveMappingCommand}"
+                          CommandParameter="{Binding}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+      </StackPanel>
+
+      <TextBlock Text="Destructive: this rewrites commit hashes. You will be asked to confirm."
+                 Foreground="#B00020" TextWrapping="Wrap" Margin="0,4,0,0" />
+      <Button Content="Anonymise" Command="{Binding AnonymiseCommand}" IsEnabled="{Binding CanRun}" HorizontalAlignment="Left" />
+    </StackPanel>
+  </ScrollViewer>
 </UserControl>

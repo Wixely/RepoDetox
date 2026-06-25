@@ -51,6 +51,7 @@ public static class Program
             builder.Services.AddSingleton<RepositoryFlattenService>();
             builder.Services.AddSingleton<RepositoryVacuumService>();
             builder.Services.AddSingleton<RepositoryExpungeService>();
+            builder.Services.AddSingleton<RepositoryContributorService>();
 
             RegisterGlobalExceptionLogging();
 
