@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using RepoDetox.Configuration;
 using Serilog;
 
 namespace RepoDetox;
@@ -10,29 +10,31 @@ public static class Program
 {
     public static async Task<int> Main(string[] args)
     {
+        var contentRoot = HostConfigurator.GetContentRoot();
+
         // Run as an stdio MCP server when invoked as `repodetox mcp`. Handled before the normal
         // host/Serilog setup so stdout carries only the MCP protocol. Existing verbs are unchanged.
         if (args.Length > 0 && string.Equals(args[0], "mcp", StringComparison.OrdinalIgnoreCase))
         {
-            await McpServer.RunAsync(args[1..]);
+            await McpServer.RunAsync(args[1..], contentRoot);
             return 0;
         }
+
+        // Bootstrap logger so failures before the host is built are still captured next to the exe.
+        Log.Logger = new LoggerConfiguration()
+            .MinimumLevel.Information()
+            .WriteTo.Console()
+            .WriteTo.File(
+                Path.Combine(contentRoot, "logs", "repodetox-bootstrap-.log"),
+                rollingInterval: RollingInterval.Day,
+                retainedFileCountLimit: 7,
+                shared: true)
+            .CreateBootstrapLogger();
 
         try
         {
             var builder = Host.CreateApplicationBuilder(args);
-            var defaultLogPath = GetDefaultLogPath();
-
-            builder.Configuration.Sources.Clear();
-            builder.Configuration.SetBasePath(AppContext.BaseDirectory);
-            builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: true);
-            builder.Configuration.AddInMemoryCollection(
-                new Dictionary<string, string?>
-                {
-                    ["Serilog:WriteTo:1:Args:path"] = defaultLogPath
-                });
-            builder.Configuration.AddEnvironmentVariables();
-            builder.Configuration.AddCommandLine(args);
+            HostConfigurator.ApplyConfiguration(builder.Configuration, contentRoot, args);
 
             Log.Logger = new LoggerConfiguration()
                 .ReadFrom.Configuration(builder.Configuration)
@@ -41,6 +43,7 @@ public static class Program
 
             builder.Logging.ClearProviders();
             builder.Services.AddSerilog(Log.Logger, dispose: false);
+            builder.Services.Configure<RepoDetoxOptions>(builder.Configuration.GetSection(RepoDetoxOptions.SectionName));
             builder.Services.AddSingleton<CliApplication>();
             builder.Services.AddSingleton<IOperationReporter, ConsoleOperationReporter>();
             builder.Services.AddSingleton<GitCommandRunner>();
@@ -89,13 +92,5 @@ public static class Program
             Log.Error(eventArgs.Exception, "An unobserved task exception was raised.");
             eventArgs.SetObserved();
         };
-    }
-
-    private static string GetDefaultLogPath()
-    {
-        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var logDirectory = Path.Combine(localAppData, "RepoDetox", "logs");
-        Directory.CreateDirectory(logDirectory);
-        return Path.Combine(logDirectory, "repodetox-.log");
     }
 }

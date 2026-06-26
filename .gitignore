@@ -3,6 +3,10 @@ bin/
 obj/
 logs/
 
+# Local config override (never committed)
+RepoDetox.Local.json
+**/RepoDetox.Local.json
+
 # User and IDE state
 .vs/
 *.user

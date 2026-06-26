@@ -1,4 +1,11 @@
 {
+  "RepoDetox": {
+    "ReadOnly": true,
+    "AllowVacuum": false,
+    "AllowAnonymise": false,
+    "AllowFlatten": false,
+    "AllowExpunge": false
+  },
   "Preview": {
     "Enabled": false
   },

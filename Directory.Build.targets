@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep the shared RepoDetox.json external (next to the executable) in single-file publish so the
+       tunables stay editable without unpacking the bundle. The linked item in each project also sets
+       ExcludeFromSingleFile directly; this glob covers any same-directory copy as a safety net. -->
+  <ItemGroup Condition="'$(PublishSingleFile)' == 'true'">
+    <None Update="**\RepoDetox*.json" ExcludeFromSingleFile="true" />
+    <Content Update="**\RepoDetox*.json" ExcludeFromSingleFile="true" />
+  </ItemGroup>
+</Project>

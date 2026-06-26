@@ -158,6 +158,46 @@ Register it with an MCP client (e.g. an `mcp.json`):
 
 The existing CLI verbs are unchanged; `mcp` is an additional subcommand.
 
+### MCP safety gates
+
+The MCP server follows the same safety posture as the MCPSharp product line: it is **read-only by
+default**. Every mutating tool is gated twice — the master `RepoDetox:ReadOnly` switch must be off,
+**and** that tool's own per-operation flag must be on. `analyze_repository` is read-only and always
+available. (Mutating tools also still require their per-call `confirm=true` argument.)
+
+| Config key | Default | Effect |
+| --- | --- | --- |
+| `RepoDetox:ReadOnly` | `true` | Master switch. While true, every mutating tool refuses. |
+| `RepoDetox:AllowVacuum` | `false` | Allow `vacuum_repository` (needs `ReadOnly=false`). |
+| `RepoDetox:AllowAnonymise` | `false` | Allow `anonymise_repository` (needs `ReadOnly=false`). |
+| `RepoDetox:AllowFlatten` | `false` | Allow `flatten_repository` (needs `ReadOnly=false`). |
+| `RepoDetox:AllowExpunge` | `false` | Allow `expunge_secrets` (needs `ReadOnly=false`). |
+
+A blocked tool returns a clear error naming the exact key to set, e.g.
+`MCP tool 'vacuum_repository' is blocked by server configuration. Set RepoDetox:ReadOnly=false (and RepoDetox:AllowVacuum=true) to allow this history rewrite.`
+
+## Configuration
+
+Both executables — the CLI/MCP server **and** the GUI — read one shared **`RepoDetox.json`** sitting
+next to the executable. (Unlike the wider MCPSharp product line, RepoDetox uses a single shared config
+file name for both apps rather than a per-executable name or an `appsettings.json` layer.) It holds the
+`RepoDetox` safety section, the `Preview` toggle, and the Serilog setup. The file is resolved from the
+executable's own directory, so a single-file publish keeps the JSON external and editable. Logs roll
+into `logs/` beside the executable.
+
+Sources are layered in this order (later wins): `RepoDetox.json` → `RepoDetox.Local.json` →
+environment variables → `REPODETOX_`-prefixed environment variables → command-line arguments. Use
+ASP.NET Core's `__` separator for nested keys:
+
+```powershell
+# Enable the vacuum MCP tool for one run without editing the JSON
+$env:REPODETOX_RepoDetox__ReadOnly = "false"
+$env:REPODETOX_RepoDetox__AllowVacuum = "true"
+RepoDetox.exe mcp
+```
+
+`RepoDetox.Local.json` is git-ignored for machine-specific overrides.
+
 ## How history rewriting works
 
 `vacuum` and `anonymise` stream the repository through git's own plumbing:

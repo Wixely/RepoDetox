@@ -29,9 +29,12 @@ public static class RepoDetoxMcpTools
     [Description("DESTRUCTIVE. Rewrite history to remove files that were deleted and are no longer present on any live ref, then garbage-collect to reclaim space. Pass confirm=true to actually run.")]
     public static async Task<string> VacuumRepository(
         RepositoryVacuumService service,
+        McpOperationGate gate,
         [Description("Absolute path to the git repository.")] string path,
         [Description("Must be true to actually rewrite history.")] bool confirm = false)
     {
+        gate.EnsureAllowed("vacuum_repository", o => o.AllowVacuum, "AllowVacuum");
+
         if (!confirm)
         {
             return ConfirmHint;
@@ -46,6 +49,7 @@ public static class RepoDetoxMcpTools
     [Description("DESTRUCTIVE. Rewrite author/committer/tagger identities across all history. By default both username and email are replaced with a deterministic hash; supply setName/setEmail to use fixed values instead. Pass confirm=true to actually run.")]
     public static async Task<string> AnonymiseRepository(
         RepositoryAnonymiseService service,
+        McpOperationGate gate,
         [Description("Absolute path to the git repository.")] string path,
         [Description("Anonymise usernames (ignored if setName is provided).")] bool anonymiseUsers = true,
         [Description("Anonymise emails (ignored if setEmail is provided).")] bool anonymiseEmails = true,
@@ -53,6 +57,8 @@ public static class RepoDetoxMcpTools
         [Description("Set every email to this exact value instead of hashing.")] string? setEmail = null,
         [Description("Must be true to actually rewrite history.")] bool confirm = false)
     {
+        gate.EnsureAllowed("anonymise_repository", o => o.AllowAnonymise, "AllowAnonymise");
+
         if (!confirm)
         {
             return ConfirmHint;
@@ -72,9 +78,12 @@ public static class RepoDetoxMcpTools
     [Description("DESTRUCTIVE. Collapse all history into a single root commit matching the current HEAD state and delete every other branch, tag, and ref. Pass confirm=true to actually run.")]
     public static async Task<string> FlattenRepository(
         RepositoryFlattenService service,
+        McpOperationGate gate,
         [Description("Absolute path to the git repository.")] string path,
         [Description("Must be true to actually rewrite history.")] bool confirm = false)
     {
+        gate.EnsureAllowed("flatten_repository", o => o.AllowFlatten, "AllowFlatten");
+
         if (!confirm)
         {
             return ConfirmHint;
@@ -89,12 +98,15 @@ public static class RepoDetoxMcpTools
     [Description("DESTRUCTIVE. Replace literal secret strings with a token everywhere they appear in history (file contents and, by default, commit/tag messages), then update the working tree. Use this to scrub accidentally-committed secrets. Pass confirm=true to actually run. The secret was already committed, so rotate/revoke it regardless.")]
     public static async Task<string> ExpungeSecrets(
         RepositoryExpungeService service,
+        McpOperationGate gate,
         [Description("Absolute path to the git repository.")] string path,
         [Description("Literal secret strings to remove from history.")] string[] secrets,
         [Description("Text each secret is replaced with. Default '***REMOVED***'.")] string replacement = "***REMOVED***",
         [Description("Also replace inside commit/tag messages.")] bool includeMessages = true,
         [Description("Must be true to actually rewrite history.")] bool confirm = false)
     {
+        gate.EnsureAllowed("expunge_secrets", o => o.AllowExpunge, "AllowExpunge");
+
         if (secrets is null || secrets.Length == 0)
         {
             return "Provide at least one secret string to remove.";

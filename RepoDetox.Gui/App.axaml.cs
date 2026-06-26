@@ -1,8 +1,10 @@
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using RepoDetox.Configuration;
 using RepoDetox.Gui.Services;
 using RepoDetox.Gui.ViewModels;
 using RepoDetox.Gui.Views;
@@ -68,21 +70,15 @@ public partial class App : Application
 
     private static void ConfigureServices(IServiceCollection services)
     {
-        var logDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "RepoDetox",
-            "logs");
-        Directory.CreateDirectory(logDirectory);
+        // Read the same shared RepoDetox.json the CLI/MCP executable uses, from next to this exe.
+        var contentRoot = HostConfigurator.GetContentRoot();
+        var configurationBuilder = new ConfigurationBuilder();
+        HostConfigurator.ApplyConfiguration(configurationBuilder, contentRoot, []);
+        var configuration = configurationBuilder.Build();
 
         var logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .WriteTo.File(
-                Path.Combine(logDirectory, "repodetox-gui-.log"),
-                rollingInterval: RollingInterval.Day,
-                rollOnFileSizeLimit: true,
-                fileSizeLimitBytes: 10 * 1024 * 1024,
-                retainedFileCountLimit: 14,
-                shared: true)
+            .ReadFrom.Configuration(configuration)
+            .Enrich.FromLogContext()
             .CreateLogger();
 
         services.AddLogging(builder =>
