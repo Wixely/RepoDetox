@@ -1,17 +1,18 @@
 # RepoDetox
 
-A .NET 8 toolkit for cleaning and anonymising git repositories by rewriting history. It
-ships as both a **command-line tool** and a cross-platform **desktop GUI**, sharing one
-core engine. All history rewriting is performed in pure C# using git's built-in
-`git fast-export` / `git fast-import` — no Python or `git-filter-repo` dependency.
+A .NET 10 toolkit for cleaning and anonymising git repositories by rewriting history. It
+ships as a **command-line tool**, a cross-platform **desktop GUI**, and an **HTTP MCP
+server**, all sharing one core engine. All history rewriting is performed in pure C# using
+git's built-in `git fast-export` / `git fast-import` — no Python or `git-filter-repo` dependency.
 
 ## Projects
 
 | Project | Output | Description |
 | --- | --- | --- |
 | `RepoDetox.Core` | library | Engine: analysis + history-rewrite services, console-free |
-| `RepoDetox` | CLI exe | Command-line front-end (`list`/`vacuum`/`anonymise`/`flatten`/`preview`) |
+| `RepoDetox` | CLI exe | Command-line front-end (`list`/`vacuum`/`anonymise`/`flatten`/`expunge`/`contributors`/`preview`) and a stdio `mcp` server mode |
 | `RepoDetox.Gui` | desktop exe | Avalonia GUI with a tab per feature |
+| `RepoDetoxMCPSharp` | server exe | HTTP Model Context Protocol server (Kestrel; runs as console app or Windows Service) exposing the same operations as tools |
 
 ## Commands
 
@@ -25,7 +26,7 @@ core engine. All history rewriting is performed in pure C# using git's built-in
 
 ## Prerequisites
 
-- .NET 8 SDK or newer to build/publish
+- .NET 10 SDK or newer to build/publish
 - Git on `PATH`
 - For the GUI on **Linux**: a desktop with X11 and fontconfig present
   (`libx11`, `libfontconfig1`); these system libraries are not bundled.
@@ -33,9 +34,9 @@ core engine. All history rewriting is performed in pure C# using git's built-in
 ## Desktop GUI
 
 Pick a repository once at the top of the window, then switch between the **Analyze**,
-**Vacuum**, **Anonymise**, and **Flatten** tabs to run any operation on it. Destructive
-operations ask for confirmation, progress streams to a shared output log, and a Cancel
-button aborts a running operation.
+**Vacuum**, **Anonymise**, **Flatten**, and **Expunge** tabs to run any operation on it.
+Destructive operations ask for confirmation, progress streams to a shared output log, and a
+Cancel button aborts a running operation.
 
 The **Repo Browser** button opens a modal that scans your drives for git repositories in
 the background (results stream in live, sortable by path or last-changed date, cached to
@@ -62,7 +63,7 @@ dotnet publish RepoDetox\RepoDetox.csproj -c Release -r win-x64 --self-contained
 dotnet publish RepoDetox.Gui\RepoDetox.Gui.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true
 ```
 
-Use `-r linux-x64` to target Linux. Output goes to `<project>\bin\Release\net8.0\<rid>\publish\`.
+Use `-r linux-x64` to target Linux. Output goes to `<project>\bin\Release\net10.0\<rid>\publish\`.
 
 Tagged releases (`v*`) are built automatically by GitHub Actions
 ([.github/workflows/build-release-packages.yml](.github/workflows/build-release-packages.yml)),
@@ -157,6 +158,16 @@ Register it with an MCP client (e.g. an `mcp.json`):
 ```
 
 The existing CLI verbs are unchanged; `mcp` is an additional subcommand.
+
+### HTTP server (`RepoDetoxMCPSharp`)
+
+For a hosted/networked endpoint, the separate **`RepoDetoxMCPSharp`** project runs the same MCP
+tools over **HTTP** (Kestrel) instead of stdio. It listens on a configurable host/port/path,
+can run either as a console app or a **Windows Service**, exposes a `/healthz` endpoint, and can
+be protected with a password via middleware. It shares the same Core engine, tools, and safety
+gates as the stdio server (see below); the only difference is the transport. Its configuration
+comes from `appsettings.json` / `RepoDetoxMCPSharp.json` (plus environment variables prefixed
+`REPODETOXMCP_`).
 
 ### MCP safety gates
 
