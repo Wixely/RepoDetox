@@ -1,11 +1,18 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Text;
 using Microsoft.Extensions.Logging;
 
 namespace RepoDetox;
 
 public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
 {
+    // Git emits and consumes UTF-8. Without pinning this, .NET decodes the child's output with the
+    // Windows system code page (e.g. CP1252), which mangles any non-ASCII name/email — the mojibake
+    // then also breaks anonymise, because the mapping's source no longer matches the real bytes.
+    // No BOM: a preamble would corrupt the first line git reads from stdin.
+    private static readonly Encoding Utf8NoBom = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+
     public async Task<GitCommandResult> RunAsync(
         string workingDirectory,
         IReadOnlyList<string> arguments,
@@ -65,7 +72,10 @@ public sealed class GitCommandRunner(ILogger<GitCommandRunner> logger)
                 // and an inherited handle would otherwise leave git waiting on it.
                 RedirectStandardInput = true,
                 UseShellExecute = false,
-                CreateNoWindow = true
+                CreateNoWindow = true,
+                StandardOutputEncoding = Utf8NoBom,
+                StandardErrorEncoding = Utf8NoBom,
+                StandardInputEncoding = Utf8NoBom
             }
         };
 
