@@ -6,7 +6,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/RepoDetox.Gui/bin/Debug/net8.0/RepoDetox.Gui.exe",
+      "program": "${workspaceFolder}/RepoDetox.Gui/bin/Debug/net10.0/RepoDetox.Gui.exe",
       "cwd": "${workspaceFolder}",
       "console": "internalConsole",
       "stopAtEntry": false
@@ -16,7 +16,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net10.0/RepoDetox.exe",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "stopAtEntry": false,
@@ -30,7 +30,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net10.0/RepoDetox.exe",
       "args": [
         "preview",
         "--repo",
@@ -55,7 +55,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net10.0/RepoDetox.exe",
       "args": [
         "list",
         "--repo",
@@ -70,7 +70,7 @@
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
-      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net8.0/RepoDetox.exe",
+      "program": "${workspaceFolder}/RepoDetox/bin/Debug/net10.0/RepoDetox.exe",
       "args": [
         "anonymise",
         "--repo",
