@@ -20,10 +20,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { pkg: RepoDetox-cli, project: RepoDetox/RepoDetox.csproj,         runtime: win-x64,   binary: RepoDetox.exe }
-          - { pkg: RepoDetox-cli, project: RepoDetox/RepoDetox.csproj,         runtime: linux-x64, binary: RepoDetox }
-          - { pkg: RepoDetox-gui, project: RepoDetox.Gui/RepoDetox.Gui.csproj, runtime: win-x64,   binary: RepoDetox.Gui.exe }
-          - { pkg: RepoDetox-gui, project: RepoDetox.Gui/RepoDetox.Gui.csproj, runtime: linux-x64, binary: RepoDetox.Gui }
+          # CLI + GUI: the original standalone zips
+          - { pkg: RepoDetox-cli,      project: RepoDetox/RepoDetox.csproj,                 runtime: win-x64,   binary: RepoDetox.exe,           flavor: standalone }
+          - { pkg: RepoDetox-cli,      project: RepoDetox/RepoDetox.csproj,                 runtime: linux-x64, binary: RepoDetox,               flavor: standalone }
+          - { pkg: RepoDetox-gui,      project: RepoDetox.Gui/RepoDetox.Gui.csproj,         runtime: win-x64,   binary: RepoDetox.Gui.exe,       flavor: standalone }
+          - { pkg: RepoDetox-gui,      project: RepoDetox.Gui/RepoDetox.Gui.csproj,         runtime: linux-x64, binary: RepoDetox.Gui,           flavor: standalone }
+          # MCPSharp HTTP server variant — named to match MCPHub's expected asset shape:
+          #   {Name}-{osToken}-x64-{flavorToken}-v{version}.zip
+          - { pkg: RepoDetoxMCPSharp,  project: RepoDetoxMCPSharp/RepoDetoxMCPSharp.csproj, runtime: win-x64,   binary: RepoDetoxMCPSharp.exe,   flavor: self-contained }
+          - { pkg: RepoDetoxMCPSharp,  project: RepoDetoxMCPSharp/RepoDetoxMCPSharp.csproj, runtime: linux-x64, binary: RepoDetoxMCPSharp,       flavor: self-contained }
 
     steps:
       - name: Check out code
@@ -39,7 +44,7 @@ jobs:
             package_version="dev-${GITHUB_RUN_NUMBER}"
           fi
           echo "PACKAGE_VERSION=${package_version}" >> "$GITHUB_ENV"
-          echo "PACKAGE_BASENAME=${{ matrix.pkg }}-${{ matrix.runtime }}-standalone" >> "$GITHUB_ENV"
+          echo "PACKAGE_BASENAME=${{ matrix.pkg }}-${{ matrix.runtime }}-${{ matrix.flavor }}" >> "$GITHUB_ENV"
 
       - name: Set up .NET
         uses: actions/setup-dotnet@v4

@@ -2,4 +2,5 @@
   <Project Path="RepoDetox.Core/RepoDetox.Core.csproj" />
   <Project Path="RepoDetox.Gui/RepoDetox.Gui.csproj" />
   <Project Path="RepoDetox/RepoDetox.csproj" />
+  <Project Path="RepoDetoxMCPSharp/RepoDetoxMCPSharp.csproj" />
 </Solution>

@@ -1,0 +1,39 @@
+{
+  "Server": {
+    "Host": "localhost",
+    "Port": 5714,
+    "Path": "/mcp",
+    "WindowsServiceName": "RepoDetoxMCPSharp",
+    "Password": ""
+  },
+  "RepoDetox": {
+    "ReadOnly": true,
+    "AllowVacuum": false,
+    "AllowAnonymise": false,
+    "AllowFlatten": false,
+    "AllowExpunge": false
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.Hosting.Lifetime": "Information",
+        "Microsoft.AspNetCore": "Warning"
+      }
+    },
+    "Enrich": [ "FromLogContext", "WithMachineName", "WithProcessId", "WithThreadId" ],
+    "WriteTo": [
+      { "Name": "Console" },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/repodetoxmcp-.log",
+          "rollingInterval": "Day",
+          "retainedFileCountLimit": 7,
+          "shared": true
+        }
+      }
+    ]
+  }
+}
