@@ -99,7 +99,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: release-assets
-          pattern: RepoDetox-*
+          # Match both `RepoDetox-cli-…` / `RepoDetox-gui-…` and the MCPSharp variant
+          # `RepoDetoxMCPSharp-…` (no dash after `RepoDetox`).
+          pattern: RepoDetox*
 
       - name: Show release assets
         shell: bash
